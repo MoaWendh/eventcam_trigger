@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/metavision_platform_info.dir/metavision_platform_info.cpp.o -o metavision_platform_info  -Wl,-rpath,/usr/local/lib /usr/local/lib/libmetavision_hal_discovery.so.5.1.1 /usr/lib/aarch64-linux-gnu/libboost_program_options.so.1.74.0 /usr/local/lib/libmetavision_hal.so.5.1.1 /usr/local/lib/libmetavision_sdk_base.so.5.1.1 

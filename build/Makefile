@@ -57,10 +57,10 @@ RM = /usr/bin/cmake -E rm -f
 EQUALS = =
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /workspace/projects/eventcam_trigger
+CMAKE_SOURCE_DIR = /home/jetson/workspace_eventcam/projects/eventcam_trigger
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /workspace/projects/eventcam_trigger/build
+CMAKE_BINARY_DIR = /home/jetson/workspace_eventcam/projects/eventcam_trigger/build
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -87,9 +87,9 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	$(CMAKE_COMMAND) -E cmake_progress_start /workspace/projects/eventcam_trigger/build/CMakeFiles /workspace/projects/eventcam_trigger/build//CMakeFiles/progress.marks
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles /home/jetson/workspace_eventcam/projects/eventcam_trigger/build//CMakeFiles/progress.marks
 	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 all
-	$(CMAKE_COMMAND) -E cmake_progress_start /workspace/projects/eventcam_trigger/build/CMakeFiles 0
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
@@ -117,41 +117,41 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named metavision_platform_info
+# Target rules for targets named event_trigger
 
 # Build rule for target.
-metavision_platform_info: cmake_check_build_system
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 metavision_platform_info
-.PHONY : metavision_platform_info
+event_trigger: cmake_check_build_system
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/Makefile2 event_trigger
+.PHONY : event_trigger
 
 # fast build rule for target.
-metavision_platform_info/fast:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/metavision_platform_info.dir/build.make CMakeFiles/metavision_platform_info.dir/build
-.PHONY : metavision_platform_info/fast
+event_trigger/fast:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/event_trigger.dir/build.make CMakeFiles/event_trigger.dir/build
+.PHONY : event_trigger/fast
 
-metavision_platform_info.o: metavision_platform_info.cpp.o
-.PHONY : metavision_platform_info.o
+event_trigger.o: event_trigger.cpp.o
+.PHONY : event_trigger.o
 
 # target to build an object file
-metavision_platform_info.cpp.o:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/metavision_platform_info.dir/build.make CMakeFiles/metavision_platform_info.dir/metavision_platform_info.cpp.o
-.PHONY : metavision_platform_info.cpp.o
+event_trigger.cpp.o:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/event_trigger.dir/build.make CMakeFiles/event_trigger.dir/event_trigger.cpp.o
+.PHONY : event_trigger.cpp.o
 
-metavision_platform_info.i: metavision_platform_info.cpp.i
-.PHONY : metavision_platform_info.i
+event_trigger.i: event_trigger.cpp.i
+.PHONY : event_trigger.i
 
 # target to preprocess a source file
-metavision_platform_info.cpp.i:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/metavision_platform_info.dir/build.make CMakeFiles/metavision_platform_info.dir/metavision_platform_info.cpp.i
-.PHONY : metavision_platform_info.cpp.i
+event_trigger.cpp.i:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/event_trigger.dir/build.make CMakeFiles/event_trigger.dir/event_trigger.cpp.i
+.PHONY : event_trigger.cpp.i
 
-metavision_platform_info.s: metavision_platform_info.cpp.s
-.PHONY : metavision_platform_info.s
+event_trigger.s: event_trigger.cpp.s
+.PHONY : event_trigger.s
 
 # target to generate assembly for a file
-metavision_platform_info.cpp.s:
-	$(MAKE) $(MAKESILENT) -f CMakeFiles/metavision_platform_info.dir/build.make CMakeFiles/metavision_platform_info.dir/metavision_platform_info.cpp.s
-.PHONY : metavision_platform_info.cpp.s
+event_trigger.cpp.s:
+	$(MAKE) $(MAKESILENT) -f CMakeFiles/event_trigger.dir/build.make CMakeFiles/event_trigger.dir/event_trigger.cpp.s
+.PHONY : event_trigger.cpp.s
 
 # Help Target
 help:
@@ -161,10 +161,10 @@ help:
 	@echo "... depend"
 	@echo "... edit_cache"
 	@echo "... rebuild_cache"
-	@echo "... metavision_platform_info"
-	@echo "... metavision_platform_info.o"
-	@echo "... metavision_platform_info.i"
-	@echo "... metavision_platform_info.s"
+	@echo "... event_trigger"
+	@echo "... event_trigger.o"
+	@echo "... event_trigger.i"
+	@echo "... event_trigger.s"
 .PHONY : help
 
 

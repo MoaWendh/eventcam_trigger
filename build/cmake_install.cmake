@@ -1,4 +1,4 @@
-# Install script for directory: /workspace/projects/eventcam_trigger
+# Install script for directory: /home/jetson/workspace_eventcam/projects/eventcam_trigger
 
 # Set the install prefix
 if(NOT DEFINED CMAKE_INSTALL_PREFIX)
@@ -50,5 +50,5 @@ endif()
 
 string(REPLACE ";" "\n" CMAKE_INSTALL_MANIFEST_CONTENT
        "${CMAKE_INSTALL_MANIFEST_FILES}")
-file(WRITE "/workspace/projects/eventcam_trigger/build/${CMAKE_INSTALL_MANIFEST}"
+file(WRITE "/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/${CMAKE_INSTALL_MANIFEST}"
      "${CMAKE_INSTALL_MANIFEST_CONTENT}")

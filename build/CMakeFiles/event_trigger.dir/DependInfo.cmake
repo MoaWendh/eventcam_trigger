@@ -8,7 +8,7 @@ set(CMAKE_DEPENDS_LANGUAGES
 
 # The set of dependency files which are needed:
 set(CMAKE_DEPENDS_DEPENDENCY_FILES
-  "/workspace/projects/eventcam_trigger/metavision_platform_info.cpp" "CMakeFiles/metavision_platform_info.dir/metavision_platform_info.cpp.o" "gcc" "CMakeFiles/metavision_platform_info.dir/metavision_platform_info.cpp.o.d"
+  "/home/jetson/workspace_eventcam/projects/eventcam_trigger/event_trigger.cpp" "CMakeFiles/event_trigger.dir/event_trigger.cpp.o" "gcc" "CMakeFiles/event_trigger.dir/event_trigger.cpp.o.d"
   )
 
 # Targets to which this target links.

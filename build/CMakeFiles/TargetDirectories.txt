@@ -1,3 +1,3 @@
-/workspace/projects/eventcam_trigger/build/CMakeFiles/metavision_platform_info.dir
-/workspace/projects/eventcam_trigger/build/CMakeFiles/edit_cache.dir
-/workspace/projects/eventcam_trigger/build/CMakeFiles/rebuild_cache.dir
+/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles/event_trigger.dir
+/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles/edit_cache.dir
+/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles/rebuild_cache.dir
