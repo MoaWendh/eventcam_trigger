@@ -1,0 +1,9 @@
+# Ignorar a pasta de compilação inteira
+build/
+
+# Ignorar pastas de dados (mesmo que estejam fora do build)
+data_evecam_*/
+
+# Ignorar arquivos temporários e logs
+*.log
+*.tmp_index

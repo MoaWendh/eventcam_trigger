@@ -37,8 +37,20 @@ void pulseTrigger(int numPulse, gpiod_line *line, int pin, int64_t duracaoPulso)
 }
 
 
+// Funação que gera o menu de opções:
+void showMenu(int pin, int64_t duracao){     
+    std::cout << ""<< std::endl;
+    std::cout << "******************** Menu  ********************"<< std::endl;
+    std::cout << " H - Ativar o pino "<<  pin << " da Jetson (3,3V)"<< std::endl;        
+    std::cout << " L - Desativar o pino "<<  pin << " da Jetson (0,0V)"<< std::endl;
+    std::cout << " T - Iniciar gravacao de eventos com trigger (.raw)" << std::endl;
+    std::cout << " Q - Sair do programa "<< std::endl;
+    std::cout << "     Digite a opção: ";
+};
+
+
 // 
-void saveDataFileWithTrigger(Metavision::Camera &cam, gpiod_line *line, int duracao_trigger_us, std::string serial) {
+void saveDataFileWithTrigger(Metavision::Camera &cam, gpiod_line *line, int64_t duracao_trigger_microSeg, int64_t duracao_PreTrigger_microSeg, int64_t duracao_PosTrigger_microSeg, std::string serial) {
     try {
         // Obter data para o nome da pasta e do arquivo:
         auto agora = std::chrono::system_clock::now();
@@ -63,50 +75,88 @@ void saveDataFileWithTrigger(Metavision::Camera &cam, gpiod_line *line, int dura
         // Gera full path para salvar o arquivo de dados:
         std::string full_path = nome_pasta + "/" + filename;
         
+
         // Inicia Gravação doarquivo de dados:
         cam.start_recording(full_path);
         
-        // Pré-trigger: 50ms para garantir que o arquivo foi aberto e o buffer inicializou:
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        // Pré-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg para garantir que o arquivo foi aberto e o buffer inicializou:
+        std::this_thread::sleep_for(std::chrono::microseconds(duracao_PreTrigger_microSeg));
 
-        // Início do pulso de trigger, transição para nível alto:
-        gpiod_line_set_value(line, 1);
-        
-        // Duração do Trigger em niivel alto:
-        std::this_thread::sleep_for(std::chrono::milliseconds(duracao_trigger_us));
+        // *******************Início do pulso de trigger**************** 
+        // Transição do trigger para nível alto:
+        gpiod_line_set_value(line, 1);  
 
-        // O trigger vai opara nivel baixo indicando final do trigger de eventos:
+        // Mantém o pulso em nivel alto pelo tempo especificado em "duracao_trigger_microSeg":
+        std::this_thread::sleep_for(std::chrono::microseconds(duracao_trigger_microSeg));
+
+        // Transição do trigger para nível alto:
         gpiod_line_set_value(line, 0);
+        // ********************Fim do pulso de trigger******************
 
-        // Pós-trigger: 0,1ms, aguarda 100us antes de fecahr o arquivo de dados: 
-        std::this_thread::sleep_for(std::chrono::microseconds(100));
+        // Pós-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg antes de fecahr o arquivo de dados: 
+        std::this_thread::sleep_for(std::chrono::microseconds(duracao_PosTrigger_microSeg));
 
         // Finaliza a Gravação e fecha arquivo de dados:
-        cam.stop_recording();
-        
-        std::cout << "Salvo arquivo: " << "\"" << filename << "\"" << std::endl;
-        
+        if (cam.stop_recording()){
+            std::cout << "Salvo arquivo: " << "\"" << filename << "\"" << std::endl;
+        }
+        else{
+            std::cout << "!!!ERRO ao fechar arquivo:" << filename << std::endl;
+
+        }
+
     } catch (const std::exception &e) {
         std::cerr << "[ERRO] Falha na thread de captura: " << e.what() << std::endl;
     }
 }
 
 
-// Funação que gera o menu de opções:
-void showMenu(int pin, int64_t duracao){     
-    std::cout << ""<< std::endl;
-    std::cout << "******************** Menu  ********************"<< std::endl;
-    std::cout << " H - Ativar o pino "<<  pin << " da Jetson (3,3V)"<< std::endl;        
-    std::cout << " L - Desativar o pino "<<  pin << " da Jetson (0,0V)"<< std::endl;
-    std::cout << " S - Iniciar gravacao de eventos com trigger (.raw)" << std::endl;
-    std::cout << " Q - Sair do programa "<< std::endl;
-    std::cout << "     Digite a opção: ";
-};
+
+// Função quew efetua a cofniguração do barramento GPIO da Jetson, ela retorna um ponteiro tipo gpio_line usado para acessar os pinos de IO:
+struct gpiod_line* inicializaGPIO_Jetson(std::string chipIO, int active_line, int active_pin, struct gpiod_chip **chip_ptr){
+
+    //********************* Inicia configuração do barramenteo IO da Jetson: 
+    // 1º. Abre o chip definido na string chipIO e armazena no ponteiro fornecido pelo main:
+    *chip_ptr = gpiod_chip_open_by_name(chipIO.c_str());
+
+    // struct gpiod_chip *chip = gpiod_chip_open_by_name(chipIO.c_str());
+    if (!(*chip_ptr)) {
+        perror("Erro ao abrir gpiochip0!!!");
+        return nullptr;
+    }
+
+    // 2º. Captura o pino, line, correspondente. Definido em active_line
+    struct gpiod_line *line = gpiod_chip_get_line(*chip_ptr, active_line);
+    if (!line) {
+        std::cerr << "Erro: Nao foi possivel obter a linha: " << active_line << std::endl;
+        gpiod_chip_close(*chip_ptr);
+        return nullptr;
+    }
+
+    // 3º. Faz um request da linha como SAÍDA:
+    if (gpiod_line_request_output(line, "sync_trigger", 0) == 0){
+        //Garantir que o pino do IO da Jetson inicie em nivel baixo, pois ele pode iniciar com um valor qualquer:
+        gpiod_line_set_value(line, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(500));
+        std::cout << "Jetson: trigger no pino: " << active_pin << std::endl;
+        std::cout << "Jetson: Estado inical do pino " << active_pin << "= 0V" << std::endl;
+        std::cout << "Jetson: trigger no SOC line: "<< active_line << std::endl;        
+    } 
+    else {
+        perror("Erro ao configurar saída");
+        return nullptr;
+    }
+
+    return line;
+}
 
 
 // Funcção principal:
 int main(int argc, char *argv[]) {
     limparTela();
+
+    // Declara o ponteiro do chip aqui para poder ser fechado depois dentro do main:
+    struct gpiod_chip *chip = nullptr;
 
     //Offsets para acesar os IOs:
     std::string chipIO= "gpiochip0";
@@ -116,7 +166,9 @@ int main(int argc, char *argv[]) {
     int numTrainOfPulses= 1;
     char myChoice;
     bool running = true;
-    int64_t duracaoPulsoTrigger= 10;
+    int64_t duracao_PulsoTrigger_microSeg= 30000; // em micro segundos
+    int64_t duracao_PreTrigger_microSeg= 50000; // em micro segundos
+    int64_t duracao_PosTrigger_microSeg= 50000; // em micro segundos
 
     bool hab_exibe_menu= true;
 
@@ -135,11 +187,22 @@ int main(int argc, char *argv[]) {
     int active_line= lineD; //
     int active_pin= header_pinD;
 
+
+    // Chama função "inicializaGPIO_Jetson" para configuração do barramento GPIO da Jetson:
+    struct gpiod_line *line= inicializaGPIO_Jetson(chipIO.c_str(), active_line, active_pin, &chip);
+    if (line == nullptr) {
+        std::cerr << "Falha crítica na inicialização do GPIO. Abortando!!!!" << std::endl;
+        return 1;
+    }
+
+    //Metavision::DeviceConfig config;
+    //config.set("trigger_in_mode", "both");
+
     // Instancia um objeto "camera" da classe "Metavision::camera":
     Metavision::Camera camera;
     try {
         camera = Metavision::Camera::from_first_available();
-        std::cout << "Camera inicializada." << std::endl;
+        //std::cout << "Instanciado o objeto camera." << std::endl;
     } catch (const Metavision::CameraException &e) {
         std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
         return 1;
@@ -165,7 +228,6 @@ int main(int argc, char *argv[]) {
     // Aguarda acumular 10.000 us (10ms) de eventos para exibição: 
     cd_frame_generator.set_display_accumulation_time_us(10000);
 
-
     std::mutex cd_frame_mutex;
     cv::Mat cd_frame;
     std::atomic<bool> show_viewer{true}; 
@@ -190,43 +252,24 @@ int main(int argc, char *argv[]) {
     auto *i_trigger_in = camera.get_device().get_facility<Metavision::I_TriggerIn>();
     if (i_trigger_in) {
         i_trigger_in->enable(Metavision::I_TriggerIn::Channel::Main);
-        std::cout << "Trigger habilitado" << std::endl;
+        std::cout << "Trigger habilitado para ambas as bordas, Risinge e Falling edge." << std::endl;
     }
+
+    /*
+    Metavision::DeviceConfig config;
+    config.set("trigger_in_mode", "both"); // Nome do parâmetro pode variar conforme o plugin
+    camera = Metavision::Camera::from_first_available(config);
+    */
 
     // Start camera de eventos:
     camera.start();
     std::cout << "Camera inicializada" << std::endl;
 
-
-
-    //*********** Inicia configuração do barramenteo IO da Jetson: 
-    // 1º. Abre o chip definido na string chipIO:
-    struct gpiod_chip *chip = gpiod_chip_open_by_name(chipIO.c_str());
-    if (!chip) {
-        perror("Erro ao abrir gpiochip0!!!");
-        return 1;
-    }
-
-    // 2º. Captura o pino, line, correspondente. Definido em active_line
-    struct gpiod_line *line = gpiod_chip_get_line(chip, active_line);
-    if (!line) {
-        std::cerr << "Erro: Nao foi possivel obter a linha: " << active_line << std::endl;
-        gpiod_chip_close(chip);
-        return 1;
-    }
-
-    // 3º. Faz um request da linha como SAÍDA:
-    if (gpiod_line_request_output(line, "sync_trigger", 0) < 0) {
-        perror("Erro ao configurar saída");
-        return 1;
-    }
-
-    std::cout << "Jetson: trigger no pino: " << active_pin << std::endl;
-    std::cout << "Jetson: trigger no SOC line: "<< active_line << std::endl;
-
-
+   
     // Loop principal:
     while(running) {
+
+        int key = cv::waitKey(1);
 
         // Se o viewer estiver ativo, atualiza a janela sem travar o menu
         if (show_viewer) {
@@ -234,19 +277,24 @@ int main(int argc, char *argv[]) {
             if (!cd_frame.empty()) {
                 cv::imshow(window_name, cd_frame);
             }
-            cv::waitKey(1); 
-        }
+           // cv::waitKey(1); 
+        }    
+        else {
+                // Cria uma imagem preta pequena apenas para manter o foco do teclado
+                cv::imshow(window_name, cv::Mat::zeros(100, 300, CV_8UC1));
+            }            
+
 
         /// Exibe menu de escolha:
         if (hab_exibe_menu){
             //limparTela();
-            showMenu(active_pin, duracaoPulsoTrigger);
+            showMenu(active_pin, duracao_PulsoTrigger_microSeg);
             hab_exibe_menu= false;
         }
 
         // 2. Captura de Teclado via OpenCV (33ms de espera = ~30 FPS)
         // Isso substitui o std::cin e não trava o programa
-        int key = cv::waitKey(100);
+        //int key = cv::waitKey(100);
 
         if (key!=-1){
             char my_char= static_cast<char>(key);
@@ -264,34 +312,14 @@ int main(int argc, char *argv[]) {
                     gpiod_line_set_value(line, 0);
                     std::cout << " Pino " << active_pin << " em nivel BAIXO" << std::endl;
                     break;
-                /*    
-                case 'v':
-                case 'V':
-                    show_viewer = true;
-                    cv::namedWindow(window_name, cv::WINDOW_NORMAL);
-                    // Adicione esta linha para forçar a janela para o topo e atrair o foco:
-                    cv::setWindowProperty(window_name, cv::WND_PROP_TOPMOST, 1);
-                    cv::resizeWindow(window_name, geometry.get_width(), geometry.get_height());
-                    std::cout << " Viewer aberto." << std::endl;
-                    break;
-                */
-               /*    
-                case 'f':        
-                case 'F':
-                    show_viewer = false;
-                    cv::destroyWindow(window_name);
-                    std::cout << " Viewer fechado." << std::endl;
-                    hab_exibe_menu= true;
-                    break;                
-                */  
 
-                case 's':
-                case 'S':
+                case 't':
+                case 'T':
                         {
-                            std::cout << "\nSalvando dados .raw com trigger de: "<< duracaoPulsoTrigger << "ms" << std::endl;
+                            std::cout << "\nSalvando dados .raw com trigger de: "<< duracao_PulsoTrigger_microSeg << "ms" << std::endl;
             
                             // Passando o objeto camera, o ponteiro da linha GPIO e a duração do pulso trigger
-                            std::thread t(saveDataFileWithTrigger, std::ref(camera), line, duracaoPulsoTrigger, serial_cam_1);
+                            std::thread t(saveDataFileWithTrigger, std::ref(camera), line, duracao_PulsoTrigger_microSeg, duracao_PreTrigger_microSeg, duracao_PosTrigger_microSeg, serial_cam_1);
                             
                             // Desacoplar a thread para que o viewer não trave
                             t.detach();
@@ -311,11 +339,22 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // Finalização e limpeza
+    // *********** Finalização e limpeza:
+    // Fecha a câmera:  
     camera.stop();
+
+    // Para o gerador de frame:
     cd_frame_generator.stop();
-    gpiod_line_release(line);
-    gpiod_chip_close(chip);
+
+    // Fecha o pino da Jetson
+    if (line) 
+        gpiod_line_release(line);
+    
+    // LIbera o chip reservado na Jetson:    
+    if (chip)
+        gpiod_chip_close(chip);
+
+    // Fecha todas as janelas:    
     cv::destroyAllWindows();
 
     return 0;

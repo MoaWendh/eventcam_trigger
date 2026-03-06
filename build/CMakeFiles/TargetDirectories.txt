@@ -1,3 +1,0 @@
-/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles/event_trigger.dir
-/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles/edit_cache.dir
-/home/jetson/workspace_eventcam/projects/eventcam_trigger/build/CMakeFiles/rebuild_cache.dir
