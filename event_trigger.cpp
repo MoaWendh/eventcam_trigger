@@ -9,7 +9,6 @@
 
 #include <nlohmann/json.hpp> // Biblioteca para JSON
 
-// Inclusões do Metavision e OpenCV
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
@@ -18,15 +17,9 @@
 #include <metavision/hal/facilities/i_trigger_in.h>
 #include <metavision/hal/facilities/i_ll_biases.h>
 
+#include "include/controlJetson.h"
+
 using json = nlohmann::json;
-
-
-// Struct para as linas, pinos, da Jetson:
-struct GPIO_Lines {
-    struct gpiod_line *trigger;
-    struct gpiod_line *led;
-};
-
 
 
 // ESta classe LedContreoller serve apenas para piscar o led pelo barremano de IO da Jetso:
@@ -219,70 +212,6 @@ void saveDataFileWithTrigger(Metavision::Camera &cam, gpiod_line *line, int64_t 
 
 
 
-// Função quew efetua a cofniguração do barramento GPIO da Jetson, ela retorna um ponteiro tipo gpio_line usado para acessar os pinos de IO:
-GPIO_Lines inicializaGPIO_Jetson(std::string chipIO, int active_line_trigger, int active_pin_trigger, int active_line_led, int active_pin_led, struct gpiod_chip **chip_ptr){
-
-    GPIO_Lines lines = {nullptr, nullptr};
-
-    //********************* Inicia configuração do barramenteo IO da Jetson: 
-    // 1º. Abre o chip definido na string chipIO e armazena no ponteiro fornecido pelo main:
-    *chip_ptr = gpiod_chip_open_by_name(chipIO.c_str());
-
-    // struct gpiod_chip *chip = gpiod_chip_open_by_name(chipIO.c_str());
-    if (!(*chip_ptr)) {
-        perror("Erro ao abrir gpiochip0!!!");
-        return lines;
-    }
-
-    // 2º. Captura o pino, line, para o TRIGGER:
-    lines.trigger = gpiod_chip_get_line(*chip_ptr, active_line_trigger);
-    if (!lines.trigger) {
-        std::cerr << "Erro: Nao foi possivel obter a linha: " << active_line_trigger << std::endl;
-        return lines;
-    }
-    gpiod_line_set_value(lines.trigger, 0);
-
-    // 3º. Captura o pino, line, para piscar o LED:
-    lines.led = gpiod_chip_get_line(*chip_ptr, active_line_led);
-    if (!lines.led) {
-        std::cerr << "Erro: Nao foi possivel obter a linha: " << active_line_led << std::endl;
-        return lines;
-    }
-    gpiod_line_set_value(lines.led, 0);    
-
-    
-    // 4º. Faz um request da linha como SAÍDA para o trigger:
-    if (gpiod_line_request_output(lines.trigger, "sync_trigger", 0) == 0){
-        //Garantir que o pino do IO da Jetson inicie em nivel baixo, pois ele pode iniciar com um valor qualquer:
-        gpiod_line_set_value(lines.trigger, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::cout << "Jetson: trigger no pino: " << active_pin_trigger << std::endl;
-        std::cout << "Jetson: Estado inicial do pino " << active_pin_trigger << "= 0V" << std::endl;
-       // std::cout << "Jetson: trigger no SOC line: "<< active_line_trigger << std::endl;        
-    } 
-    else {
-        perror("Erro ao configurar saída");
-        return lines;
-    }
-
-     // 5º. Faz um request da linha como SAÍDA para o led:
-    if (gpiod_line_request_output(lines.led, "sync_trigger", 0) == 0){
-        //Garantir que o pino do IO da Jetson inicie em nivel baixo, pois ele pode iniciar com um valor qualquer:
-        gpiod_line_set_value(lines.led, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::cout << "Jetson: Led no pino: " << active_pin_led << std::endl;
-        std::cout << "Jetson: Estado inicial do pino do led " << active_pin_led << "= 0V" << std::endl;   
-    } 
-    else {
-        perror("Erro ao configurar saída");
-        return lines;
-    }   
-
-    return lines;
-}
-
-
-
 // Função chamada para a leitura dois Biases da câmera de eventos:
 void readCameraBiases(Metavision::Camera &cam) {
     try {
@@ -393,47 +322,39 @@ int main(int argc, char *argv[]) {
     //********************************************************************************************/
     //****************************** Inicia COnfiguração da Jetson *******************************/
 
-    //Offsets para acesar os IOs:
+    //Define duração de alguns pulsos:
     int64_t duracao_PulsoTrigger_microSeg= 30000; // em micro segundos
     int64_t duracao_PreTrigger_microSeg= 50000; // em micro segundos
     int64_t duracao_PosTrigger_microSeg= 50000; // em micro segundos
-
     int64_t duracao_PulsoLed_microSeg= 200000; // em micro segundos;
-
-    //Seleção de pinos de IOs disponíveis
-    int lineA= 43;  // GPIO13 PH.00 - Pino IO no Header= 33
-    int lineB= 85;  // GPIO12 PN.01 - Pino IO no Header= 15
-    int lineC= 105; // GPIO01 PQ.05 - Pino IO no Header= 29
-    int lineD= 144; // GPIO01 PAC.06 - Pino IO no Header= 7
-
-    // N] do pino físico no barramento de GPIO da Jetson:
-    int header_pinA= 33;
-    int header_pinB= 15;
-    int header_pinC= 29;
-    int header_pinD= 7;
-
-    int active_pin_trigger= header_pinD;
-    int active_pin_led= header_pinA;
-
-    // String que contem o chip usado SOI da Jetson:
-    std::string chipIO= "gpiochip0";
 
     
     // Declara o ponteiro do chip aqui para poder ser fechado depois dentro do main:
     struct gpiod_chip *chip = nullptr;
 
+    // Isntancia um objeto para acessar a cofniguração do GPIO da Jetson. A classe está declarada no header "controlJetson.h":
+    configJetson configuraGPIO_Jetson;
+
+    // Caham o método get() para capturar as informações dos pinos e lines da Jetson:    
+    auto activePins= configuraGPIO_Jetson.getPinos();
+    auto activeLines= configuraGPIO_Jetson.getLines();   
+    
+    // Separa as informações dos pinos por função:
+    int pin_PiscaLed= activePins.header_pinA;
+    int pin_TriggerEventCam= activePins.header_pinF;
+    int pin_TriggerCam= activePins.header_pinG;
+    int pin_ControlLaser= activePins.header_pinH;
+
+
     // Chama função "inicializaGPIO_Jetson" para configuração do barramento GPIO da Jetson.
-    // Primeiro gerando  lineTrigger para o trogger da camera:
-    GPIO_Lines gpios= inicializaGPIO_Jetson(chipIO.c_str(), lineD, header_pinD, lineA, header_pinA, &chip);
+    GPIO_Lines gpios_actives= configuraGPIO_Jetson.configura_GPIO_Jetson(&chip);
 
-
-    // Verificação se os pinod forma configurados ok, por segurança:
-    if (gpios.trigger == nullptr || gpios.led == nullptr) {
+    // Verificação se os pinos forma configurados ok, por segurança:
+    if (gpios_actives.triggerEventCam == nullptr || gpios_actives.piscaLed == nullptr) {
         std::cerr << "Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
         if (chip) gpiod_chip_close(chip);
         return 1;
     }
-
 
 
     //********************************************************************************************/
@@ -537,9 +458,9 @@ int main(int argc, char *argv[]) {
     camera.start();
 
     // Dummy Trigger: "Acorda" o canal de trigger da Metavision
-    gpiod_line_set_value(gpios.trigger, 1);
+    gpiod_line_set_value(gpios_actives.triggerEventCam, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    gpiod_line_set_value(gpios.trigger, 0);
+    gpiod_line_set_value(gpios_actives.triggerEventCam, 0);
 
     // Aguarda o sistema processar esse evento interno antes de liberar o menu
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
@@ -552,7 +473,7 @@ int main(int argc, char *argv[]) {
 
     // Instancia o objeto meuLed da classe LEDCotroller: 
     // Cria classe com os parametros inciais lineLed e Duração_Pulso_miliseg:
-    LEDController meuLed(gpios.led, duracao_PulsoLed_miliSeg);
+    LEDController meuLed(gpios_actives.piscaLed, duracao_PulsoLed_miliSeg);
 
 
     //********************************************************************************************  
@@ -578,9 +499,10 @@ int main(int argc, char *argv[]) {
         /// Exibe menu de escolha:
         if (hab_exibe_menu){
             //limparTela();
-            showMenu(active_pin_trigger, active_pin_led, duracao_PulsoTrigger_microSeg);
+            showMenu(pin_TriggerEventCam, pin_PiscaLed, duracao_PulsoTrigger_microSeg);
             hab_exibe_menu= false;
         }
+
 
         // 2. Captura de Teclado via OpenCV (33ms de espera = ~30 FPS)
         // Isso substitui o std::cin e não trava o programa
@@ -613,15 +535,15 @@ int main(int argc, char *argv[]) {
 
                 case '3':
                         {
-                            gpiod_line_set_value(gpios.trigger, 1);                           
-                            std::cout << " Pino " << active_pin_trigger << " em nivel ALTO" << std::endl;
+                            gpiod_line_set_value(gpios_actives.triggerEventCam, 1);                           
+                            std::cout << " Pino " << pin_TriggerEventCam << " em nivel ALTO" << std::endl;
                             break;
                         }
 
                 case '4':
                         {
-                            gpiod_line_set_value(gpios.trigger, 0);
-                            std::cout << " Pino " << active_pin_trigger << " em nivel BAIXO" << std::endl;
+                            gpiod_line_set_value(gpios_actives.triggerEventCam, 0);
+                            std::cout << " Pino " << pin_TriggerEventCam << " em nivel BAIXO" << std::endl;
                             break;
                         }    
 
@@ -630,7 +552,7 @@ int main(int argc, char *argv[]) {
                             std::cout << "\nTrigger Com duração de: "<< duracao_PulsoTrigger_microSeg << "us" << std::endl;
             
                             // Passando o objeto camera, o ponteiro da linha GPIO e a duração do pulso trigger
-                            std::thread t(saveDataFileWithTrigger, std::ref(camera), gpios.trigger, duracao_PulsoTrigger_microSeg, duracao_PreTrigger_microSeg, duracao_PosTrigger_microSeg, serial_cam_1);
+                            std::thread t(saveDataFileWithTrigger, std::ref(camera), gpios_actives.triggerEventCam, duracao_PulsoTrigger_microSeg, duracao_PreTrigger_microSeg, duracao_PosTrigger_microSeg, serial_cam_1);
                             
                             // Desacoplar a thread para que o viewer não trave
                             t.detach();
@@ -665,18 +587,8 @@ int main(int argc, char *argv[]) {
     // Para o gerador de frame:
     cd_frame_generator.stop();
 
-    // Fecha o pino da Jetson
-    if (gpios.trigger) 
-        gpiod_line_release(gpios.trigger);
-    
-    // Fecha o pino da Jetson
-    if (gpios.led) 
-        gpiod_line_release(gpios.led);
-    
-
-    // LIbera o chip reservado na Jetson:    
-    if (chip)
-        gpiod_chip_close(chip);
+    // Libera o GPIO da Jetson com segunraça. Este ´eum método da classe "configJetson":
+    configuraGPIO_Jetson.liberaGPIO_Jetson(chip, gpios_actives);
 
     // Fecha todas as janelas:    
     cv::destroyAllWindows();

@@ -29,10 +29,11 @@ include_directories(
     ${OpenCV_INCLUDE_DIRS}
     ${GPIOD_INCLUDE_DIRS}
     /usr/include/opencv4
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # 3. Definição do Executável
-set(SOURCE_FILE event_trigger.cpp) # Ajuste para o nome real do seu arquivo .cpp
+set(SOURCE_FILE event_trigger.cpp controlJetson.cpp) # Ajuste para o nome real do seu arquivo .cpp
 add_executable(event_trigger ${SOURCE_FILE})
 
 # 4. Linkagem de Bibliotecas
