@@ -6,8 +6,7 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
-
-#include <nlohmann/json.hpp> // Biblioteca para JSON
+#include <nlohmann/json.hpp>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
@@ -17,75 +16,9 @@
 #include <metavision/hal/facilities/i_trigger_in.h>
 #include <metavision/hal/facilities/i_ll_biases.h>
 
-#include "include/controlJetson.h"
+#include "controlIO.h"
 
 using json = nlohmann::json;
-
-
-// ESta classe LedContreoller serve apenas para piscar o led pelo barremano de IO da Jetso:
-class LEDController {
-private:
-    std::atomic<bool> is_running{false};
-    std::thread blink_thread;
-    struct gpiod_line *line; // Guarda o pino do barramento da Jetson 
-    int pulse_duration_ms; // Armazena a duração internamente
-
-    // Função interna que roda na thread
-    void run_blink() {
-        std::cout << "[Thread] Pulso do Led iniciada (" << pulse_duration_ms << "ms).\n";
-        while (is_running) {
-            //Ativa o pino para acender o led
-            gpiod_line_set_value(line, 1);
-            // Matém o lde acesso por pulse_duration_ms
-            std::this_thread::sleep_for(std::chrono::milliseconds(pulse_duration_ms));
-
-            // Apaga o Led:
-            gpiod_line_set_value(line, 0);
-            // Matme o led apagado por pulse_duration_ms:
-            std::this_thread::sleep_for(std::chrono::milliseconds(pulse_duration_ms));
-        }
-        std::cout << "[Thread] Pulso finalizado.\n";
-        // Por garantia:
-        gpiod_line_set_value(line, 0);
-    }
-
-public:
-    // Construtor configurando pino e tempo:
-    LEDController(struct gpiod_line *gpio_line, int duration_ms) 
-        : line(gpio_line), pulse_duration_ms(duration_ms) {}
-
-    // Desturtor do objeto:
-    ~LEDController() {
-        stop();
-    }
-
-    void start() {
-        if (is_running) {
-            std::cout << "Pulso Led ativado.\n";
-            return;
-        }
-        is_running = true;
-        blink_thread = std::thread(&LEDController::run_blink, this);
-    }
-
-    void stop() {
-        if (is_running) {
-            is_running = false;
-            if (blink_thread.joinable()) {
-                blink_thread.join();
-            }
-        } else {
-            std::cout << "Nenhuma thread ativa para parar!!!!\n";
-        }
-    }
-
-    bool isActive() const {
-        return is_running;
-    }
-};
-
-
-
 
 // Simples rotina para limpar a tela:
 void limparTela() {
@@ -142,8 +75,10 @@ void showMenu(int pinTrigger, int pinLed, int64_t duracao){
     std::cout << " 5 - Trigger: iniciar gravacao de eventos (.raw)" << std::endl;
     std::cout << " 6 - Start blink Led - Pino:"<< pinLed << std::endl;
     std::cout << " 7 - Stop blink Led" << std::endl;
+    std::cout << " L - Limpa Tela" << std::endl;
     std::cout << " Q - Sair do programa "<< std::endl;
-    std::cout << "     Digite a opção: ";
+    std::cout << "**********************************************"<< std::endl;
+    std::cout << " Digite a opção: ";
     std::cout << std::endl;
 }
 
@@ -244,13 +179,13 @@ void readCameraBiases(Metavision::Camera &cam) {
 
 
 // Função chamada para a leitura dois Biases da câmera de eventos:
-int loadBiasesNaCamera(Metavision::Camera &cam) {
+int loadCameraBiases(Metavision::Camera &cam) {
 
     // Os biases max e min. são definidos em https://docs.prophesee.ai/stable/hw/manuals/biases.html 
     // Os calores para a ca~mera SilkyEvCam pertencem a geração Gen3.1 VGA, assim os valores máximos e mínimo
     // são deinfidos como:
     
-    int bias_diff_default= 299; // Não alterar o valor do bias_diff, o default é 299.
+    const int bias_diff_default= 299; // Não alterar o valor do bias_diff, o default é 299.
     
     int bias_diff_on_min= bias_diff_default + 75; // O valor mínimo do bias_diff_on é bias_dif_default + 75.
     int bias_diff_on_max= bias_diff_default + 200; // O valor máximo do bias_diff_on é bias_dif_default + 200.
@@ -267,42 +202,70 @@ int loadBiasesNaCamera(Metavision::Camera &cam) {
     int bias_refr_min= 1300;
     int bias_refr_max= 1800;
 
-    std::string path= "../settings.json";
+    std::string fileName= "settings.json";
+
+    std::string path= "../";
+
+    std::string fullPath = path + '/' + fileName;
 
     // ANtes de gravar os valores de biases na camera verifica se os valores extrapolam os limites:
-    int bias_diff_off= lerJsonFile(path, "bias_diff_off");
+    int bias_diff_off= lerJsonFile(fullPath, "bias_diff_off");
     if (bias_diff_off<bias_diff_off_min || bias_diff_off>bias_diff_off_max){
         std::cout<< "ERRO!! O valor de bias_diff_off= "<< bias_diff_off << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_diff_off_min << " e " << bias_diff_off_max << std::endl;  
         return -1;
     }
 
-    int bias_diff_on= lerJsonFile(path, "bias_diff_on");
+    int bias_diff_on= lerJsonFile(fullPath, "bias_diff_on");
     if (bias_diff_on<bias_diff_on_min || bias_diff_on>bias_diff_on_max){
         std::cout<< "ERRO!! O valor de bias_diff_on= "<< bias_diff_on << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_diff_on_min << " e " << bias_diff_on_max << std::endl;  
         return -1;
     }
 
-    int bias_fo= lerJsonFile(path, "bias_fo");
+    int bias_fo= lerJsonFile(fullPath, "bias_fo");
     if (bias_fo<bias_fo_min || bias_fo>bias_fo_max){
         std::cout<< "ERRO!! O valor de bias_fo= "<< bias_fo << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_fo_min << " e " << bias_fo_max << std::endl;  
         return -1;
     }   
     
-    int bias_hpf= lerJsonFile(path, "bias_hpf");
+    int bias_hpf= lerJsonFile(fullPath, "bias_hpf");
     if (bias_hpf<bias_hpf_min || bias_hpf>bias_hpf_max){
         std::cout<< "ERRO!! O valor de bias_hpf= "<< bias_hpf << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_hpf_min << " e " << bias_hpf_max << std::endl;
         return -1;  
     }   
 
-    int bias_refr= lerJsonFile(path, "bias_refr");
+    int bias_refr= lerJsonFile(fullPath, "bias_refr");
     if (bias_refr<bias_refr_min || bias_refr>bias_refr_max){
         std::cout<< "ERRO!! O valor de bias_refr= "<< bias_refr << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_refr_min << " e " << bias_refr_max << std::endl; 
         return -1; 
     }  
 
-    // Se todos os valores forma coerentes, os biases serão gravados na câmera:
-    cam.load(path.c_str());
-    std::cerr << "Carregando arquivo de configuração: " << path.c_str() << std::endl;
+
+    // Acessa a Facility de Biases de baixo nível:
+    auto *i_ll_biases = cam.get_device().get_facility<Metavision::I_LL_Biases>();
+    // Testa se o acesso foi liberado:
+    if (!i_ll_biases) {
+        std::cerr << "[Erro] Nao foi possivel acessar a interface de Biases do hardware!" << std::endl;
+        return -1;
+    }
+
+    // Atualzia os biases na câmera:
+    try {
+        // Atuazia os valores um por um diretamente no registrador do sensor. Este processo é "on-the-fly", sem precisar de cam.stop()
+        i_ll_biases->set("bias_diff_on", bias_diff_on);
+        i_ll_biases->set("bias_diff_off", bias_diff_off);
+        i_ll_biases->set("bias_fo", bias_fo);
+        i_ll_biases->set("bias_hpf", bias_hpf);
+        i_ll_biases->set("bias_refr", bias_refr);
+
+        std::cout << "[OK] Biases atualizados na câmera com dados do arquivo: \""<< fileName.c_str() << "\"" << std::endl;
+        return 0;
+    } catch (const std::exception &e) {
+        std::cerr << "[Erro] Não foi possível gravar biases na câmera!!! " << e.what() << std::endl;
+        return -1;
+    }   
+
+    // Abaixo segue um método aleternativo para setar os biases da camera, ele é de mais alto nível, com apenas 1 linha:
+    // cam.load(path.c_str());
     return 0;
 }
 
@@ -335,9 +298,8 @@ int main(int argc, char *argv[]) {
     // Isntancia um objeto para acessar a cofniguração do GPIO da Jetson. A classe está declarada no header "controlJetson.h":
     configJetson configuraGPIO_Jetson;
 
-    // Caham o método get() para capturar as informações dos pinos e lines da Jetson:    
+    // Chama o método get() para capturar as informações dos pinos e lines "ativos" da Jetson:    
     auto activePins= configuraGPIO_Jetson.getPinos();
-    auto activeLines= configuraGPIO_Jetson.getLines();   
     
     // Separa as informações dos pinos por função:
     int pin_PiscaLed= activePins.header_pinA;
@@ -346,12 +308,17 @@ int main(int argc, char *argv[]) {
     int pin_ControlLaser= activePins.header_pinH;
 
 
-    // Chama função "inicializaGPIO_Jetson" para configuração do barramento GPIO da Jetson.
+    // Chama o método de configuração "configuraGPIO_Jetson.configura_GPIO_Jetson(&chip)" para inicialização do barramento GPIO da Jetson.
+    // Ela retorna uma struct contendo ponteiros com os endereços de cada linha do GPIO da Jetson para controle pelo Kernell.
+    // Através desses endereços que os pinos de IO são diretamente manipulados, por exemplo, mudanças de nivel lógico.
     GPIO_Lines gpios_actives= configuraGPIO_Jetson.configura_GPIO_Jetson(&chip);
 
+
     // Verificação se os pinos forma configurados ok, por segurança:
-    if (gpios_actives.triggerEventCam == nullptr || gpios_actives.piscaLed == nullptr) {
-        std::cerr << "Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
+    if (gpios_actives.triggerEventCam == nullptr || gpios_actives.piscaLed == nullptr || gpios_actives.triggerNormalCam == nullptr || 
+        gpios_actives.controlLaser == nullptr || gpios_actives.controlMotor01 == nullptr || gpios_actives.controlMotor02 == nullptr ||
+        gpios_actives.controlMotor03 == nullptr || gpios_actives.controlMotor04 == nullptr) {
+        std::cerr << "[ERRO] Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
         if (chip) gpiod_chip_close(chip);
         return 1;
     }
@@ -407,10 +374,8 @@ int main(int argc, char *argv[]) {
 
     // Carregando os biases na camera de eventos definidos em setings.json:
     // camera.save("../settings.json");
-    if (loadBiasesNaCamera(camera))
+    if (loadCameraBiases(camera))
         std::cout << "ERRO!! Biases não gravado na câmera." << std::endl;
-    else
-        std::cout << "Câmera configurada com os biases do .json." << std::endl;
 
 
     // Para transformas os evenvetos em imagens:
@@ -514,24 +479,17 @@ int main(int argc, char *argv[]) {
             switch (my_char)
             {
                 case '1':
-                    readCameraBiases(camera);
-                    break;
+                        readCameraBiases(camera);
+                        break;
                 
                 case '2':
                         // Por que a camera para quando eu chamo afunção loadBiasesNaCamera()?
-                        camera.stop();
-                        loadBiasesNaCamera(camera);
-                        camera.start();
+                        //show_viewer = false;
+                        //camera.stop();
+                        loadCameraBiases(camera);
+                        //camera.start();
+                       // show_viewer = true;
                         break;
-                /*
-                        {
-                            std::cout << std::endl;
-                            if (loadBiasesNaCamera(camera)==-1)
-                                std::cout<< "ERROR!! Não gravou os biases na câmera.";
-                            else
-                                std::cout<< "Biases gravados na câmera.";
-                            break;
-                        }  */
 
                 case '3':
                         {
@@ -567,15 +525,22 @@ int main(int argc, char *argv[]) {
                          meuLed.stop(); // Sem parâmetros aqui, o objeto já sabe o que fazer
                          break;                        
 
+                
+                case 'l':
+                case 'L':
+                        limparTela();
+                        hab_exibe_menu= true;
+                        break;
+
                 case 'q':
                 case 'Q':
-                    running = false;
-                    std::cout << "Saindo do programa...." << std::endl;
-                    break;
+                        running = false;
+                        std::cout << "Saindo do programa...." << std::endl;
+                        break;
 
                 default:
-                    std::cout << "Comando invalido!" << std::endl;
-                    break;
+                        std::cout << "Comando invalido!" << std::endl;
+                        break;
             }
         }
     }

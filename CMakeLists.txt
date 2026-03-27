@@ -33,7 +33,7 @@ include_directories(
 )
 
 # 3. Definição do Executável
-set(SOURCE_FILE event_trigger.cpp controlJetson.cpp) # Ajuste para o nome real do seu arquivo .cpp
+set(SOURCE_FILE event_trigger.cpp controlIO.cpp) # Ajuste para o nome real do seu arquivo .cpp
 add_executable(event_trigger ${SOURCE_FILE})
 
 # 4. Linkagem de Bibliotecas
