@@ -15,6 +15,8 @@
 #include <metavision/sdk/core/utils/cd_frame_generator.h>
 #include <metavision/hal/facilities/i_trigger_in.h>
 #include <metavision/hal/facilities/i_ll_biases.h>
+#include <metavision/hal/device/device_discovery.h>
+#include <vector>
 
 #include "controlIO.h"
 
@@ -281,7 +283,12 @@ int main(int argc, char *argv[]) {
     
     // Flaque que inicializa o loop while:
     bool running = true; 
-    
+
+    const std::string serialNumber_cam0= "00000680"; 
+    const std::string serialNumber_cam1= "00000414";
+    const std::string serialNumber_cam2= "00000000";
+
+
     //********************************************************************************************/
     //****************************** Inicia COnfiguração da Jetson *******************************/
 
@@ -333,11 +340,32 @@ int main(int argc, char *argv[]) {
     // 1- Instancia um objeto "camera" da classe "Metavision::camera":
     Metavision::Camera camera;
     try {
-        camera = Metavision::Camera::from_first_available();
-        //std::cout << "Instanciado o objeto camera." << std::endl;
+        //camera = Metavision::Camera::from_first_available();
+        camera = Metavision::Camera::from_serial(serialNumber_cam0);
     } 
     catch (const Metavision::CameraException &e) {
         std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
+        try{
+            // Captura a lista de seriais de todas as câmeras conectadas
+            Metavision::DeviceDiscovery::SerialList dispositivos= Metavision::DeviceDiscovery::list();
+            if (!dispositivos.empty()){
+                int numDevices= dispositivos.size();
+                std::cout << "Cameras conectadas:" << std::endl;
+                for (int ct=0; ct<numDevices; ct++){
+                    // std::next(iterador_inicial, n_posições)
+                    auto it = std::next(dispositivos.begin(), ct);
+                    std::string sn = *it; 
+                    
+                    std::cout << "Câmera [" << ct << "] - Serial: " << sn << std::endl;
+                }
+            }
+            else{
+               std::cerr << "Nenhuma câmera de eventos detectada no barramento USB." << std::endl; 
+            }
+        }
+        catch (const std::exception &e) {
+            std::cerr << "[ERRO] Falha ao escanear barramento USB." << e.what() << std::endl;
+        }
         return 1;
     }
 
@@ -349,7 +377,7 @@ int main(int argc, char *argv[]) {
     std::string fabricante= "unknow";
 
 
-    // Captura o numero de seria da camera instanciada:
+    // Captura dados da câmera instanciada:
     try {
         fabricante = camera.get_camera_configuration().integrator;
         std::cout << std::endl;
