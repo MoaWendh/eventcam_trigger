@@ -72,8 +72,8 @@ void showMenu(int pinTrigger, int pinLed, int64_t duracao){
     std::cout << "******************** Menu  ********************"<< std::endl;
     std::cout << " 1 - Ler biases da câmera" << std::endl;
     std::cout << " 2 - Gravar biases na câmera" << std::endl;   
-    std::cout << " 3 - Ativar o pino "<<  pinTrigger << " da Jetson (3,3V)"<< std::endl;        
-    std::cout << " 4 - Desativar o pino "<<  pinTrigger << " da Jetson (0,0V)"<< std::endl;
+    std::cout << " 3 - Ativar pino IO da Jetson (3,3V) - Testar pino pré-escolhido"<< std::endl;        
+    std::cout << " 4 - Desativar pino IO da Jetson (0,0V) - Testar pino pré-escolhido"<< std::endl;
     std::cout << " 5 - Trigger: iniciar gravacao de eventos (.raw)" << std::endl;
     std::cout << " 6 - Start blink Led - Pino:"<< pinLed << std::endl;
     std::cout << " 7 - Stop blink Led" << std::endl;
@@ -309,10 +309,10 @@ int main(int argc, char *argv[]) {
     auto activePins= configuraGPIO_Jetson.getPinos();
     
     // Separa as informações dos pinos por função:
-    int pin_PiscaLed= activePins.header_pinA;
-    int pin_TriggerEventCam= activePins.header_pinF;
-    int pin_TriggerCam= activePins.header_pinG;
-    int pin_ControlLaser= activePins.header_pinH;
+    int pin_PiscaLed= activePins.header_pin_IO_I;
+    int pin_TriggerEventCam= activePins.header_pin_IO_G;
+    int pin_TriggerCam= activePins.header_pin_IO_H;
+    //int pin_ControlLaser= activePins.header_pinH;
 
 
     // Chama o método de configuração "configuraGPIO_Jetson.configura_GPIO_Jetson(&chip)" para inicialização do barramento GPIO da Jetson.
@@ -323,12 +323,53 @@ int main(int argc, char *argv[]) {
 
     // Verificação se os pinos forma configurados ok, por segurança:
     if (gpios_actives.triggerEventCam == nullptr || gpios_actives.piscaLed == nullptr || gpios_actives.triggerNormalCam == nullptr || 
-        gpios_actives.controlLaser == nullptr || gpios_actives.controlMotor01 == nullptr || gpios_actives.controlMotor02 == nullptr ||
-        gpios_actives.controlMotor03 == nullptr || gpios_actives.controlMotor04 == nullptr) {
-        std::cerr << "[ERRO] Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
-        if (chip) gpiod_chip_close(chip);
+        gpios_actives.controlMotor01 == nullptr || gpios_actives.controlMotor02 == nullptr ) {
+            std::cerr << "[ERRO] Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
+
+        if (chip) 
+            gpiod_chip_close(chip);
         return 1;
     }
+
+
+
+    // *******************************************************************************************/
+    // ******************************** Configura o PWM ******************************************/
+    // Configuração do PWM direta via Sysfs (Linux Kernel), que utiliza a interface de arquivos virtuais do 
+    // sistema operacional para manipular registradores de hardware nativos. Este método elimina 
+    // dependências externas, garantindo que o sinal de PWM seja gerado de forma estável por hardware 
+    // independente, sem sobrecarga da CPU.
+
+    std::string path_PWM_A= "/sys/class/pwm/pwmchip0/pwm0/"; // Para controle do laser
+    std::string channelToExport_A= "/sys/class/pwm/pwmchip0/export"; // 
+    
+    std::string path_PWM_B= "/sys/class/pwm/pwmchip1/pwm0/"; // Para controle do LED strobo
+    std::string channelToExport_B= "/sys/class/pwm/pwmchip1/export"; // 
+
+    // Instanciando o objeto controlLaser com a classe PWMLaser
+    PWMLaser controlLaser;
+    long timeDutyCicle_PWM_A= 500000;  // Valor em nano segundos.
+    long periodo_PWM_A= 1000000;  // Valor em nano segundos. 
+
+    // Primeiro define o chip de trabalho com o path referente a este periférico:
+    controlLaser.setPathFileChip(path_PWM_A);
+
+    // Inicializa o PWM com um periodo em ns passado como parâmetro:
+    controlLaser.inicializar(channelToExport_A, periodo_PWM_A);
+
+    // Define o dutyciclo conforme o valor da variável timeDutyCicle_PWM_A:
+    controlLaser.setDutyCycle(timeDutyCicle_PWM_A);
+
+    // Por último, habilita o PWM, a partir deste ponto, o pino irá exibir o sinal de PWM:
+    controlLaser.enable(true);
+  
+
+    // Define a variável que contém o tempo de duração que o LEd irá píscar:
+    int duracao_PulsoLed_miliSeg= 20; // em micro segundos;
+
+    // Instancia o objeto meuLed da classe LEDCotroller: 
+    // Cria classe com os parametros inciais lineLed e Duração_Pulso_miliseg:
+    LEDController meuLed(gpios_actives.piscaLed, duracao_PulsoLed_miliSeg);
 
 
     //********************************************************************************************/
@@ -461,12 +502,6 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Camera inicializada" << std::endl;
 
-    // Define a variável que contém o tempo de duração que o LEd irá píscar:
-    int duracao_PulsoLed_miliSeg= 20; // em micro segundos;
-
-    // Instancia o objeto meuLed da classe LEDCotroller: 
-    // Cria classe com os parametros inciais lineLed e Duração_Pulso_miliseg:
-    LEDController meuLed(gpios_actives.piscaLed, duracao_PulsoLed_miliSeg);
 
 
     //********************************************************************************************  
@@ -521,15 +556,15 @@ int main(int argc, char *argv[]) {
 
                 case '3':
                         {
-                            gpiod_line_set_value(gpios_actives.triggerEventCam, 1);                           
-                            std::cout << " Pino " << pin_TriggerEventCam << " em nivel ALTO" << std::endl;
+                            gpiod_line_set_value(gpios_actives.piscaLed, 1);                           
+                            std::cout << " Pino " << pin_PiscaLed << " em nivel ALTO" << std::endl;
                             break;
                         }
 
                 case '4':
                         {
-                            gpiod_line_set_value(gpios_actives.triggerEventCam, 0);
-                            std::cout << " Pino " << pin_TriggerEventCam << " em nivel BAIXO" << std::endl;
+                            gpiod_line_set_value(gpios_actives.piscaLed, 0);
+                            std::cout << " Pino " << pin_PiscaLed<< " em nivel BAIXO" << std::endl;
                             break;
                         }    
 
