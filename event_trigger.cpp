@@ -77,6 +77,9 @@ void showMenu(int pinTrigger, int pinLed, int64_t duracao){
     std::cout << " 5 - Trigger: iniciar gravacao de eventos (.raw)" << std::endl;
     std::cout << " 6 - Start blink Led - Pino:"<< pinLed << std::endl;
     std::cout << " 7 - Stop blink Led" << std::endl;
+    std::cout << " 8 - Desativa PWM" << std::endl;
+    std::cout << " + - Incrementa PWM" << std::endl;
+    std::cout << " - - Decrementa PWM" << std::endl;
     std::cout << " L - Limpa Tela" << std::endl;
     std::cout << " Q - Sair do programa "<< std::endl;
     std::cout << "**********************************************"<< std::endl;
@@ -286,7 +289,7 @@ int main(int argc, char *argv[]) {
 
     const std::string serialNumber_cam0= "00000680"; 
     const std::string serialNumber_cam1= "00000414";
-    const std::string serialNumber_cam2= "00000000";
+    const std::string serialNumber_cam2= "00000679";
 
 
     //********************************************************************************************/
@@ -340,29 +343,32 @@ int main(int argc, char *argv[]) {
     // dependências externas, garantindo que o sinal de PWM seja gerado de forma estável por hardware 
     // independente, sem sobrecarga da CPU.
 
-    std::string path_PWM_A= "/sys/class/pwm/pwmchip0/pwm0/"; // Para controle do laser
-    std::string channelToExport_A= "/sys/class/pwm/pwmchip0/export"; // 
+    std::string path_PWM_A= "/sys/class/pwm/pwmchip3/pwm0/"; // Para controle do laser
+    std::string channelToExport_A= "/sys/class/pwm/pwmchip3/export"; // 
     
-    std::string path_PWM_B= "/sys/class/pwm/pwmchip1/pwm0/"; // Para controle do LED strobo
-    std::string channelToExport_B= "/sys/class/pwm/pwmchip1/export"; // 
+    std::string path_PWM_B= "/sys/class/pwm/pwmchip2/pwm0/"; // Para controle do LED strobo
+    std::string channelToExport_B= "/sys/class/pwm/pwmchip2/export"; // 
 
     // Instanciando o objeto controlLaser com a classe PWMLaser
-    PWMLaser controlLaser;
-    long timeDutyCicle_PWM_A= 500000;  // Valor em nano segundos.
+    PWM pwm_Laser;
+    long dutyCicle_PWM_A= 50;  // Valor em nano segundos.
     long periodo_PWM_A= 1000000;  // Valor em nano segundos. 
 
-    // Primeiro define o chip de trabalho com o path referente a este periférico:
-    controlLaser.setPathFileChip(path_PWM_A);
+    // Seta o canal do pwm:
+    pwm_Laser.setChannel(channelToExport_A);
 
-    // Inicializa o PWM com um periodo em ns passado como parâmetro:
-    controlLaser.inicializar(channelToExport_A, periodo_PWM_A);
+    // Primeiro define o chip de trabalho com o path referente a este periférico:
+    pwm_Laser.setPathFileChip(path_PWM_A);
+    
+    // Seta o período do pwm:
+    pwm_Laser.setPeriodo(periodo_PWM_A);
 
     // Define o dutyciclo conforme o valor da variável timeDutyCicle_PWM_A:
-    controlLaser.setDutyCycle(timeDutyCicle_PWM_A);
+    pwm_Laser.setDutyCycle(dutyCicle_PWM_A);
 
-    // Por último, habilita o PWM, a partir deste ponto, o pino irá exibir o sinal de PWM:
-    controlLaser.enable(true);
-  
+    // Inicializa o PWM com um periodo em ns passado como parâmetro:
+    pwm_Laser.inicializa_canal();
+ 
 
     // Define a variável que contém o tempo de duração que o LEd irá píscar:
     int duracao_PulsoLed_miliSeg= 20; // em micro segundos;
@@ -382,7 +388,8 @@ int main(int argc, char *argv[]) {
     Metavision::Camera camera;
     try {
         //camera = Metavision::Camera::from_first_available();
-        camera = Metavision::Camera::from_serial(serialNumber_cam0);
+        //camera = Metavision::Camera::from_serial(serialNumber_cam0);
+        camera = Metavision::Camera::from_serial(serialNumber_cam2);
     } 
     catch (const Metavision::CameraException &e) {
         std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
@@ -585,10 +592,47 @@ int main(int argc, char *argv[]) {
                          break;                        
                         
                 case '7':
-                         meuLed.stop(); // Sem parâmetros aqui, o objeto já sabe o que fazer
-                         break;                        
+                        meuLed.stop(); // Sem parâmetros aqui, o objeto já sabe o que fazer
+                        break;                        
 
-                
+                case '8':
+                        pwm_Laser.disable(); 
+                        break;  
+
+                case '9':
+                        pwm_Laser.enable(); 
+                        break; 
+
+                case '+':
+                case '=': // Incremento do pwm
+                    {
+                        int passo= 2;
+                        long dutyCicle= pwm_Laser.getDutyCicle();
+
+                        if (dutyCicle <= (100-passo))
+                            dutyCicle += passo;
+                        else
+                            std::cout<< "DutyCicle= 100%)"; 
+
+                        pwm_Laser.setDutyCycle(dutyCicle);                                 
+                        break;
+                    }
+
+                case '-':
+                case '_': // Decremento do pwm
+                    {
+                        int passo= 2;
+                        long dutyCicle= pwm_Laser.getDutyCicle();
+
+                        if (dutyCicle>= passo)
+                            dutyCicle -= passo;
+                        else
+                            std::cout<< "DutyCicle= 0%)";
+
+                        pwm_Laser.setDutyCycle(dutyCicle);                            
+                        break;
+                    }                    
+
                 case 'l':
                 case 'L':
                         limparTela();
@@ -620,6 +664,9 @@ int main(int argc, char *argv[]) {
 
     // Fecha todas as janelas:    
     cv::destroyAllWindows();
+
+    // Desabilita o pwm
+    pwm_Laser.disable();
 
     return 0;
 }
