@@ -180,25 +180,3 @@ void configJetson::liberaGPIO_Jetson(struct gpiod_chip *chip, GPIO_Lines gpios){
     }
 }
 
-
-
-// Método para piscar o led:
-void LEDController::run_blink() {
-    std::cout << "[Thread] Pulso do Led iniciado... (" << pulse_duration_ms << "ms).\n";
-    while (is_running) {
-        //Ativa o pino para acender o led
-        gpiod_line_set_value(line, 1);
-        // Matém o led acesso por pulse_duration_ms
-        // std::cout<<"Line: " << line << std::endl;
-
-        std::this_thread::sleep_for(std::chrono::milliseconds(pulse_duration_ms));
-
-        // Apaga o Led:
-        gpiod_line_set_value(line, 0);
-        // Matme o led apagado por pulse_duration_ms:
-        std::this_thread::sleep_for(std::chrono::milliseconds(pulse_duration_ms));
-    }
-    std::cout << "[Thread] Pulso finalizado.\n";
-    // Por garantia:
-    gpiod_line_set_value(line, 0);
-}

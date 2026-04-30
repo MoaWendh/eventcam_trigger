@@ -85,62 +85,24 @@ public:
 
 
 
-
-// ESta classe LedContreoller serve apenas para piscar o led pelo barremano de IO da Jetso:
-class LEDController {
+// Classe relacionada ao contrle de estado de Leds ou Lasers:
+class LightController {
 private:
-    std::atomic<bool> is_running{false};
-    std::thread blink_thread;
-    
-    // Guarda o pino do barramento da Jetson
-    struct gpiod_line *line;  
-
-    // Armazena a duração internamente
-    int pulse_duration_ms; 
-
-    // Método "run_blink" é a callback chamada pela Thread "blink_thread" para piscar o Led.    
-    void run_blink();
+    // Preferencialmente usar uma variável atômica em vez de primitiva, pois variáveis 
+    // atomicas são mais adequadas para utilização com trheads, pois garantem sincornismo. 
+    std::atomic<bool> is_active{false};
 
 public:
-    // Construtor configurando pino e tempo:
-    LEDController(struct gpiod_line *gpio_line, int duration_ms) : line(gpio_line), pulse_duration_ms(duration_ms) {}
-
-    // Destrutor do objeto:
-    ~LEDController() {
-        stop();
+    // 
+    void setRunning(bool status) {
+        is_active = status;
     }
 
-
-    // Inicia thread para piscar Led
-    void start() {
-        if (is_running) {
-            std::cout << "Pulso Led ativado já está ativado.\n";
-            return;
-        }
-        is_running = true;
-
-        // Abre a thread "blink_thread" para piscar o led através do método, callback, "run_blink": 
-        blink_thread = std::thread(&LEDController::run_blink, this);
-    }
-
-
-    //  Para execução da thread que pisca o Led
-    void stop() {
-        if (is_running) {
-            is_running = false;
-            if (blink_thread.joinable()) {
-                blink_thread.join();
-            }
-        } else {
-            std::cout << "Nenhuma thread ativa para parar!!!!\n";
-        }
-    }
-
-    bool isActive() const {
-        return is_running;
-    }
+    // 
+    bool getRunning() const {
+        return is_active.load(); // 
+    };
 };
-
 
 
 // Classe para ocntrole do PWM da Jetson usando os recursos do próprio Kernel do Linux usando a 
@@ -159,21 +121,24 @@ private:
     int export_pwm= 0; // Valor a zer 
     long period_pwm= 1000000; // Período do pwm em nano segundos. Inicia o pwm com T= 1.000.000 (frequencia de 1kHz), que é o default da Jetson, mais estável.
     long dutyCicle_pwm= 50; // Dutycicle em percetual (%). Inicia com 50%.
-    bool active_pwm= true; //Quando este valor for true o pulso pwm será liberado na saída.
-    std::string fullPath_pwm = " ";
-    std::string canal_pwm = " ";
+    bool active_pwm= false; //Quando este valor for true o pulso pwm será liberado na saída.
+    std::string fullPath_pwm_chip = " ";
+    std::string canal_pwm = "pwm0/";
 
 
     // Este método privado é usado para setar os parâmetros nos respectivos arquivos: periodo, duty-cicle e enable:
     bool writeToFile(std::string file, std::string value) {
-        std::ofstream fs(fullPath_pwm + file);
+        std::ofstream fs(fullPath_pwm_chip + canal_pwm + file);
+        bool write_ok;
         if (fs.is_open()) {
             fs << value;
             fs.close();
-            return true;
+            write_ok= true;
         }
         else
-            return false;
+            write_ok= false;
+        
+        return write_ok; 
     }
 
 public:
@@ -203,27 +168,26 @@ public:
 
     // Seta a variável membro "active_pwm", usada para guardar o status de habilitação do pwm.
     // Também habilita a geração do sinal pwm: 
-    void enable() { 
-        active_pwm = true;
+    bool enable() { 
         if (writeToFile("enable", "1"))
-            std::cout << "Canal pwm habilitado." << std::endl;
+            active_pwm = true;
         else
-            std::cout << "[Erro] Não foi possível habilitar o canal pwm." << std::endl;
+            active_pwm = false;
+        return active_pwm;   
     }
 
+
      // Desabilita o PWM:
-    void disable() { 
-        active_pwm = false;
+    bool disable() { 
         if (writeToFile("enable", "0"))
-            std::cout << "Canal pwm desabilitado." << std::endl;
-        else
-            std::cout << "[Erro] Não foi possível desabilitar o canal pwm." << std::endl;        
+            active_pwm = false;
+        return active_pwm;
     }
    
 
     // INicializa o path do chip referente ao PWM:
     void setPathFileChip(std::string path) { 
-        fullPath_pwm= path; 
+        fullPath_pwm_chip= path; 
     }
    
     void setChannel(std::string channel){     
@@ -243,29 +207,29 @@ public:
 
         // Primeiro verifica se a pasta pwm0 existe se sim o canal já foi exportado.
         // A pasta pwm0 é criada com o export, se ela já existe não tem porque recriá-la, basta recofnigurar o pwm 
-        if (!std::filesystem::exists(fullPath_pwm)){
+        if (!std::filesystem::exists(fullPath_pwm_chip + "pwm0/")){
             // Se não existe exporta:
-            std::ofstream export_file(fullPath_pwm + "export");
+            std::ofstream export_file(fullPath_pwm_chip + "export");
             export_file << "0"; 
             export_file.close(); 
         }
 
         // Função "usleep()" serve para dar um tempo para que o hardware seja aajustado, sem um sleep de 1m não consegue setar o hw: 
-        usleep(100000);
+        //usleep(100000);
         
         // Configura o periodo:
-        writeToFile("period", std::to_string(period_pwm));
+        //writeToFile("period", std::to_string(period_pwm));
         
-        usleep(100000);
+        //usleep(100000);
 
         // Configura o duty_cicle
-        long dutyCicle_pwm_ns= (dutyCicle_pwm*period_pwm)/100;
-        writeToFile("duty_cycle", std::to_string(dutyCicle_pwm_ns)); 
+        //long dutyCicle_pwm_ns= (dutyCicle_pwm*period_pwm)/100;
+       // writeToFile("duty_cycle", std::to_string(dutyCicle_pwm_ns)); 
 
-        usleep(100000);
+        //usleep(100000);
 
         // Habilita o chip a gerar o pulso pwm:
-        enable();
+        //enable();
     }
 
 };
