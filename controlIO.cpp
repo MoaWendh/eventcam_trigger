@@ -123,6 +123,7 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
         gpiod_line_set_value(lines_out.controlMotor02, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         std::cout << "Jetson: Controle MOTOR Fase 2 no pino: " << pinos.header_pin_IO_B << " (Nivel= 0V)"<< std::endl; 
+        std::cout << std::endl;
     } 
     else {
         perror("[ERRO de Request] Não foi possível configurar como OUTPUT o pino de controle da Fase 02 do MOTOR.");
@@ -130,9 +131,11 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
     }        
 
 
-
+    // ANTES DO RETURN, salve o estado interno:
+    this->chip_ptr_interno = *chip_ptr;
+    this->gpios_internas = lines_out;
+    
     return lines_out;
-
 }
 
 

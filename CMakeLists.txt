@@ -22,21 +22,30 @@ find_package(OpenCV REQUIRED COMPONENTS core highgui imgproc)
 find_package(PkgConfig REQUIRED)
 pkg_check_modules(GPIOD REQUIRED libgpiod)
 
+# Configuração Manual do Spinnaker (FLIR)
+# Definimos as variáveis manualmente pois as libs estão em /opt
+set(SPINNAKER_INCLUDE_DIR /opt/spinnaker/include)
+set(SPINNAKER_LIB_DIR /opt/spinnaker/lib)
+
 # 2. Configuração de Inclusões
 # Adiciona os diretórios de inclusão encontrados e o caminho específico do OpenCV 4 na Jetson
 include_directories(
     ${MetavisionSDK_INCLUDE_DIRS}
     ${OpenCV_INCLUDE_DIRS}
     ${GPIOD_INCLUDE_DIRS}
+    ${SPINNAKER_INCLUDE_DIR}  # Inclusão dos headers do Spinnaker
     /usr/include/opencv4
     ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
 # 3. Definição do Executável
-set(SOURCE_FILE event_trigger.cpp controlIO.cpp) # Ajuste para o nome real do seu arquivo .cpp
+set(SOURCE_FILE event_trigger.cpp controlIO.cpp camera_conv.cpp) # 
 add_executable(event_trigger ${SOURCE_FILE})
 
 # 4. Linkagem de Bibliotecas
+# Adiciona o caminho de busca das bibliotecas do Spinnaker
+target_link_directories(event_trigger PRIVATE ${SPINNAKER_LIB_DIR})
+
 target_link_libraries(event_trigger
     PRIVATE
     MetavisionSDK::core
@@ -44,9 +53,11 @@ target_link_libraries(event_trigger
     ${OpenCV_LIBS}
     ${GPIOD_LIBRARIES}
     Boost::program_options
+    Spinnaker
 )
 
 # Mensagens de status para conferência durante o cmake ..
+message(STATUS "Spinnaker path: ${SPINNAKER_INCLUDE_DIR}")
 message(STATUS "OpenCV library status:")
 message(STATUS "    version: ${OpenCV_VERSION}")
 message(STATUS "    libraries: ${OpenCV_LIBS}")

@@ -7,6 +7,7 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <iomanip>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
@@ -18,6 +19,8 @@
 #include <metavision/hal/device/device_discovery.h>
 #include <vector>
 
+#include "Spinnaker.h"
+#include "camera_conv.h"
 #include "controlIO.h"
 
 using json = nlohmann::json;
@@ -273,36 +276,122 @@ int loadCameraBiases(Metavision::Camera &cam) {
 }
 
 
+bool ativaLedLight(LightController& led, PWM& pwm_A, PWM& pwm_B){
+    if (!pwm_A.getStatus()){
+        if (pwm_A.enable())           
+            std::cout<<" PWM Blink: Ativado." <<std::endl;
+        else{
+            std::cout<<" [Error]: não foi possível ativar o PWM blink led"<< std::endl;
+            led.setRunning(false);
+            return false;
+        }    
+    }
 
-void incrementaFreqLed(LightController& led, PWM& pwm_blink_led, bool use_led){
-    if (use_led){
-        if (!led.getRunning()){
-            std::cout<<" Led está desativado"<<std::endl;
-        }
-        else{    
-            int passo= 2;
-            long dutyCicle= pwm_blink_led.getDutyCicle();
-            if (dutyCicle<10){
-                if (dutyCicle <= (100-passo))
-                    dutyCicle += passo;
-                else
-                    std::cout<< "DutyCicle= 100%)"; 
-                pwm_blink_led.setDutyCycle(dutyCicle);
-            }  
+    if (!pwm_B.getStatus()){
+        if (pwm_B.enable())
+            std::cout<<" PWM voltage: Ativado." <<std::endl;
+        else{
+            std::cout<<" [Error]: não foi possível ativar o PWM que controla a tensão do led." << std::endl;
+            led.setRunning(false);
+            return false;
+        }    
+    }
+
+    led.setRunning(true);
+    return true;
+}
+
+
+void desativaLedLight(LightController& led, PWM& pwm_A, PWM& pwm_B){
+    if (pwm_A.getStatus()){
+        pwm_A.disable();
+        std::cout<<" PWM blink: Desativado."<< std::endl; 
+    }
+    else
+        std::cout<<" PWM blink já está desativado." << std::endl;
+
+    if (pwm_B.getStatus()){
+        pwm_B.disable();
+        std::cout<<" PWM voltage: Desativado."<< std::endl; 
+    }
+    else
+        std::cout<<" PWM voltage já está desativado." << std::endl;        
+    led.setRunning(false); 
+}
+
+
+void incrementaPWM(PWM& pwm, const std::string funcao_PWM, bool use_led_potencia){
+    if (use_led_potencia){
+        int passo= 2;
+        long dutyCicle= pwm.getDutyCicle();
+        // Limita o duty-cicle em 10% caso esteja sendo usado o LED de potencia LT2PR:
+        if (dutyCicle<10){
+            if (dutyCicle <= (100-passo)){
+                dutyCicle += passo;
+                std::cout<< "Duty-Cicle "<< funcao_PWM << "= "<< dutyCicle << std::endl;
+            }                     
             else
-                std::cout<< "[Led LT2PR] Duty cicle atingiu o valor máximo de 10." <<std::endl;
-        }
+                std::cout<< "Duty-Cicle= 100%)" << std::endl;; 
+            pwm.setDutyCycle(dutyCicle);
+        }  
+        else
+            std::cout<< "[Led LT2PR] Duty-cicle atingiu o valor máximo de 10." <<std::endl;
     }    
     else{
         int passo= 2;
-        long dutyCicle= pwm_blink_led.getDutyCicle();
+        long dutyCicle= pwm.getDutyCicle();
 
-        if (dutyCicle <= (100-passo))
+        if (dutyCicle <= (100-passo)){
             dutyCicle += passo;
+            std::cout<< "Duty-Cicle= "<< funcao_PWM << "= "<< dutyCicle << std::endl; 
+        }               
         else
-            std::cout<< "DutyCicle= 100%)"; 
-        pwm_blink_led.setDutyCycle(dutyCicle);
+            std::cout<< "Duty-Cicle= 100%)"; 
+        pwm.setDutyCycle(dutyCicle);
     }
+
+}
+
+
+void decrementaPWM(PWM& pwm, const std::string funcao_PWM){ 
+    int passo= 2;
+    long dutyCicle= pwm.getDutyCicle();
+
+    if (dutyCicle>= passo){
+        dutyCicle -= passo;
+        std::cout<< "Duty-Cicle "<< funcao_PWM << "= "<< dutyCicle << std::endl; 
+    }            
+    else
+        std::cout<< "Duty-Cicle= 0%)";
+
+    pwm.setDutyCycle(dutyCicle);                            
+
+}
+
+void configuraPWM(PWM &pwm, const std::string &path, long periodo, long duty_cicle, const std::string &canal, bool enable){
+    // Primeiro define o chip de trabalho com o path referente a este periférico:
+    pwm.setPathFileChip(path);
+
+    // Inicializa o chip que controla o pwm:
+    pwm.inicializa_canal();
+    usleep(100000);
+
+    // Ajusta o período do pwm A:
+    if (pwm.setPeriodo(periodo))
+        std::cout << "Periodo PWM "<< canal.c_str() << "= "<< periodo << std::endl;
+    else
+        std::cout << "[Erro] Não foi possível ajustar periodo pwm A." << std::endl;     
+    usleep(100000);
+
+    // Define o dutyciclo conforme o valor da variável:
+    if (pwm.setDutyCycle(duty_cicle))
+        std::cout << "Duty-Cicle PWM " << canal.c_str() << "= "<< duty_cicle << std::endl;
+    else
+        std::cout << "[Erro] Não foi possível ajustar o duty-cicle do pwm A." << std::endl;                
+    usleep(100000);
+
+    //if (enable)
+      //  pwm.enable();
 
 }
 
@@ -312,25 +401,57 @@ int main(int argc, char *argv[]) {
     // Rotina que limpa o terminal:
     limparTela();
 
+    // Declaração variaveis booleans do tipo atomic:
+    std::atomic<bool> useCamera_Conv(true);
+    std::atomic<bool> useCamera_Event(true);
+
     // Flag que habilita ou não o menu, apenas para testes:
     bool hab_exibe_menu= true;  
     
     // Flaque que inicializa o loop while:
     bool running = true; 
 
-    // Definiçao dos números de série das câmeras de eventos:
-    const std::string serialNumber_cam0= "00000414"; // HD
-    const std::string serialNumber_cam2= "00000679"; // VGA
-    const std::string serialNumber_cam3= "00000680"; // VGA
+    //********************************************************************************************/
+    //********** Configuração da camera convencional FLIR (Model BlackFly BFS-U3-04S2M) **********/
+    //********************************************************************************************/
+    std::unique_ptr<CameraConv> cam_conv_A = nullptr;
+    const std::string serialNumber_conv_cam0= "25083333";
+    const std::string serialNumber_conv_cam1= "00000414";
+
+    // Instancia o  objeto da camera convencional apenas se estiver habilitado este procedimento.
+    if (useCamera_Conv.load()){
+        // Cria a instância da classe "camera_conv" e atribuímos ao ponteiro do main:
+        cam_conv_A = std::make_unique<CameraConv>(serialNumber_conv_cam0);
+
+        // Caham o método open definido na classe:
+        if (!cam_conv_A->open()) {
+            std::cerr << "[Error] Falha ao abrir a camera USB." << std::endl;
+            cam_conv_A.reset(); // Destrói o objeto se a abertura falhar
+        } else {
+            cam_conv_A->exibir_configuracao();
+        }
+    }    
+
+    /*Parei aqui!! instanciei o objeto para a camera convecnional, fala continuar o codigo!!!
+    Até aqui compilou ok!!! Consegue abrir a camera com o S/N "25083333".
+    Confirmei com o Debug.
+    */
 
     //********************************************************************************************/
     //****************************** Configuração GPIO da Jetson *******************************/
     //********************************************************************************************/
+
+    // Definiçao dos números de série das câmeras de eventos:
+    const std::string serialNumber_event_cam0= "00000414"; // HD
+    const std::string serialNumber_event_cam2= "00000679"; // VGA
+    const std::string serialNumber_event_cam3= "00000680"; // VGA
+
     //Define duração de alguns pulsos:
-    int64_t duracao_PulsoTrigger_microSeg= 30000; // em micro segundos
+    int64_t duracao_PulsoTrigger_microSeg= 1000000;//30000; // em micro segundos
     int64_t duracao_PreTrigger_microSeg= 50000; // em micro segundos
     int64_t duracao_PosTrigger_microSeg= 50000; // em micro segundos
     int64_t duracao_PulsoLed_microSeg= 200000; // em micro segundos;
+    int numero_de_Ciclos_Trigger= 10;
  
     // Declara o ponteiro do chip aqui para poder ser fechado dentro do main:
     struct gpiod_chip *chip = nullptr;
@@ -365,7 +486,6 @@ int main(int argc, char *argv[]) {
     }
 
 
-
     // ***********************************************************************************************/
     // ******************************** Configuraçaõ do PWM ******************************************/
     // ***********************************************************************************************/    
@@ -377,67 +497,46 @@ int main(int argc, char *argv[]) {
     // Define se está usando o led de potencia LT2PR da Opto Engineering
     bool useLed_LT2PR= true;
 
-    std::string channelToExport_A= "/sys/class/pwm/pwmchip3/"; // 
-    std::string channelToExport_B= "/sys/class/pwm/pwmchip2/"; // 
+    // Definição dos paths referentes aos chips de IO da Jeson que geram o PWM: 
+    const std::string channelToExport_A= "/sys/class/pwm/pwmchip3/"; // 
+    const std::string channelToExport_B= "/sys/class/pwm/pwmchip2/"; // 
 
-    // Instanciando o objeto controlLaser com a classe PWMLaser
+    // Instanciando os objetos PWM com a classe PWM:
     PWM pwm_BlinkLed;
     PWM pwm_PowerLed;
 
-    // Deiniçãodo Duty-cicle:
-    long dutyCicle_PWM_A= 1;  // Valor em nano segundos. PWM referente ao controle do duty cicle para blink led.
+    // Definição do Duty-cicle:
+    long dutyCicle_PWM_A= 5;  // Valor em nano segundos. PWM referente ao controle do duty cicle para blink led.
     long dutyCicle_PWM_B= 10;  // Valor em nano segundos. PWM referente ao controle da tensão.
 
-    // Periodo dos PWMs, valor em nano segundos. 
-    long periodo_PWM_A= 100000000;  // 100ms, valor em nano segundos. 
-    //long periodo_PWM_B= 1000000;  // 1ms, valor em nano segundos. 
+    // Definição do periodo dos PWMs, valor em nano segundos. 
+    //long periodo_PWM_A= 100000000;  // 100ms, valor em nano segundos. 
+    long periodo_PWM_A= 10000000;  // 10ms, valor em nano segundos.
+
     long periodo_PWM_B= 1000000;  // 1ms, valor em nano segundos. 
 
-    // Primeiro define o chip de trabalho com o path referente a este periférico:
-    pwm_BlinkLed.setPathFileChip(channelToExport_A);
-    pwm_PowerLed.setPathFileChip(channelToExport_B);
-
-    // Inicializa o chip que controla o pwm:
-    pwm_BlinkLed.inicializa_canal();
-    usleep(100000);
-    pwm_PowerLed.inicializa_canal();    
-    usleep(100000);
-
-    // Ajusta o período do pwm:
-    pwm_BlinkLed.setPeriodo(periodo_PWM_A);
-    usleep(100000);
-    pwm_PowerLed.setPeriodo(periodo_PWM_B);
-    usleep(100000);
-
-    // Define o dutyciclo conforme o valor da variável timeDutyCicle_PWM_A:
-    pwm_BlinkLed.setDutyCycle(dutyCicle_PWM_A);
-    usleep(100000);
-    pwm_PowerLed.setDutyCycle(dutyCicle_PWM_B);
-    usleep(100000);
-
-    // Inicaliza a geração do pulso pwm:
-    // pwm_BlinkLed.enable();
-    pwm_PowerLed.enable();
+    // Chama função para configurar os canais PWMs: 
+    // Configura canal PWM para trabalhar com o pulso do Led:
+    configuraPWM(pwm_BlinkLed, channelToExport_A, periodo_PWM_A, dutyCicle_PWM_A, "Canal A", false);
+    // Configura canal PWM para trabalhar com o controle da potência do Led:
+    configuraPWM(pwm_PowerLed, channelToExport_B, periodo_PWM_B, dutyCicle_PWM_B, "Canal B", true);
 
     // Define a variável que contém o tempo de duração que o LEd irá píscar:
     int duracao_PulsoLed_miliSeg= 20; // em micro segundos;
     
 
-    // Instancia o objeto da classe LighCotroller: 
-    LightController Led;
-
     //********************************************************************************************/
     //*************************** Configuração da camera de eventos ***********************/
     //********************************************************************************************/
     // Booleano que define se a câmera usada é HD ou VGA:    
-    bool sensorHD= true;    
+    bool sensorHD= false;    
 
     // 1- Instancia um objeto "camera" da classe "Metavision::camera":
     Metavision::Camera camera;
     try {
         //camera = Metavision::Camera::from_first_available();
-        //camera = Metavision::Camera::from_serial(serialNumber_cam0);
-        camera = Metavision::Camera::from_serial(serialNumber_cam3);
+        //camera = Metavision::Camera::from_serial(serialNumber_event_cam0);
+        camera = Metavision::Camera::from_serial(serialNumber_event_cam3);
     } 
     catch (const Metavision::CameraException &e) {
         std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
@@ -502,7 +601,7 @@ int main(int argc, char *argv[]) {
         std::cout << "ERRO!! Biases não gravado na câmera." << std::endl;
 
 
-    // Para transformas os evenvetos em imagens:
+    // Para transformas os eventos em imagens:
     // Obtém as dimensões do sensor:
     const auto &geometry = camera.geometry();
     
@@ -557,7 +656,8 @@ int main(int argc, char *argv[]) {
 
     std::cout << "Camera inicializada" << std::endl;
 
-
+    // Instancia o objeto da classe LighCotroller: 
+    LightController ledLight;
 
     //********************************************************************************************  
     //****************************** Loop principal **********************************************
@@ -587,114 +687,81 @@ int main(int argc, char *argv[]) {
             hab_exibe_menu= false;
         }
 
-
-        // 2. Captura de Teclado via OpenCV (33ms de espera = ~30 FPS)
-        // Isso substitui o std::cin e não trava o programa
-        //int key = cv::waitKey(100);
-
+        // Máquina de estados do menu principal:
         if (key!=-1){
             char my_char= static_cast<char>(key);
 
             switch (my_char)
             {
                 case '1':
+                        // Efetua a leitura dos biases da camera de eventos:
                         readCameraBiases(camera);
                         break;
                 
                 case '2':
-                        // Por que a camera para quando eu chamo afunção loadBiasesNaCamera()?
-                        //show_viewer = false;
-                        //camera.stop();
+                        // Chama função para configurar, enviar, os biases à camera de eventos: 
                         loadCameraBiases(camera);
-                        //camera.start();
-                       // show_viewer = true;
                         break;
 
                 case '3':
                         {
                             std::cout << "\nTrigger Com duração de: "<< duracao_PulsoTrigger_microSeg << "us" << std::endl;
-            
-                            // Passando o objeto camera, o ponteiro da linha GPIO e a duração do pulso trigger
-                            std::thread t(saveDataFileWithTrigger, std::ref(camera), gpios_actives.triggerEventCam, duracao_PulsoTrigger_microSeg, duracao_PreTrigger_microSeg, duracao_PosTrigger_microSeg, serial_cam_1);
-                            
+
+                            // Neste caso é melhor ativar uma thread usando uma função lambda, pois são passadas mais de uma função para ela:
+                            std::thread t([&]() { 
+                                for (int ctCiclo=0;  ctCiclo < numero_de_Ciclos_Trigger; ctCiclo++){                           
+                                    // Primeira ativa a projeção da luz estruturada:
+                                    ativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
+        
+                                    // Passando o objeto camera, o ponteiro da linha GPIO e a duração do pulso trigger
+                                    saveDataFileWithTrigger(std::ref(camera), gpios_actives.triggerEventCam, 
+                                                            duracao_PulsoTrigger_microSeg, duracao_PreTrigger_microSeg, 
+                                                            duracao_PosTrigger_microSeg, serial_cam_1);
+                                                                
+                                    // Por ultimo, desativa o projeção de luz estruturada:
+                                    desativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
+                                }
+                            });
+
                             // Desacoplar a thread para que o viewer não trave
                             t.detach();
+
+
                             break;
                         } 
 
                 case '4':
                         {
-                            if (!Led.getRunning()){
-                                Led.setRunning(true);
-                                std::cout<<" Led ativado"<<std::endl;
-                                if (!pwm_BlinkLed.enable())
-                                    std::cout<<" [Error]: pwm"<<std::endl;
-                            }
-                            else{
-                                Led.setRunning(false);
-                                std::cout<<" Led desativado"<<std::endl;
-                                pwm_BlinkLed.disable();
-                            }                                               
+                            if (!ledLight.getRunning())
+                                ativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
+                            else
+                                desativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);                                             
                             break;                        
                         }                      
                 
                 case '.':
-                case '>': // Incremento do pwm
-                        incrementaFreqLed(Led, pwm_BlinkLed, useLed_LT2PR);
+                case '>': // Incrementa o pwm que controla o tempo de atuação do Led, duração do blink do Led
+                        incrementaPWM(pwm_BlinkLed, "Blink Led", useLed_LT2PR);
                         break;    
 
                 case ',':    
-                case '<': // Decrementa pwm
-                    {
-                        if (!Led.getRunning()){
-                            std::cout<<" Led está desativado"<<std::endl;
-                        }
-                        else{    
-                            int passo= 2;
-                            long dutyCicle= pwm_BlinkLed.getDutyCicle();
-
-                            if (dutyCicle>= passo)
-                                dutyCicle -= passo;
-                            else
-                                std::cout<< "DutyCicle= 0%)";
-
-                            pwm_BlinkLed.setDutyCycle(dutyCicle);                            
-                        }
-                        break;                        
-                    }                    
+                case '<': // Decrementa o pwm que controla o tempo de atuação do Led, duração do blink do Led
+                        decrementaPWM(pwm_BlinkLed, "Blink Led");
+                        break;                    
 
                 case '+':
-                case '=': // Incremento do pwm
-                    {
-                        int passo= 2;
-                        long dutyCicle= pwm_PowerLed.getDutyCicle();
-
-                        if (dutyCicle <= (100-passo))
-                            dutyCicle += passo;
-                        else
-                            std::cout<< "DutyCicle= 100%)"; 
-
-                        pwm_PowerLed.setDutyCycle(dutyCicle);                                 
+                case '=': // Incrementa o pwm que controla a tensão analogica do Led (0 a 10V) ou laser (o a 5V):
+                        incrementaPWM(pwm_PowerLed, "Tensão do Led", false);                                 
                         break;
-                    }
 
                 case '-':
-                case '_': // Decremento do pwm
-                    {
-                        int passo= 2;
-                        long dutyCicle= pwm_PowerLed.getDutyCicle();
-
-                        if (dutyCicle>= passo)
-                            dutyCicle -= passo;
-                        else
-                            std::cout<< "DutyCicle= 0%)";
-
-                        pwm_PowerLed.setDutyCycle(dutyCicle);                            
-                        break;
-                    }                    
+                case '_': // Decremento o pwm que controla a tensão analogica do Led (0 a 10V) ou laser (o a 5V):
+                        decrementaPWM(pwm_PowerLed, "Tensão do Led");
+                        break;                      
 
                 case 'l':
                 case 'L':
+                        // Chama função para limpar o terminal: 
                         limparTela();
                         hab_exibe_menu= true;
                         break;
@@ -718,9 +785,6 @@ int main(int argc, char *argv[]) {
 
     // Para o gerador de frame:
     cd_frame_generator.stop();
-
-    // Libera o GPIO da Jetson com segunraça. Este ´eum método da classe "configJetson":
-    configuraGPIO_Jetson.liberaGPIO_Jetson(chip, gpios_actives);
 
     // Fecha todas as janelas:    
     cv::destroyAllWindows();

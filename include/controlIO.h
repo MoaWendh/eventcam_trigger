@@ -23,6 +23,9 @@ struct GPIO_Lines {
 // Classe com métodos para configurar a Jetson Orin nano:
 class configJetson {
 private:
+    struct gpiod_chip *chip_ptr_interno = nullptr;
+    GPIO_Lines gpios_internas = {nullptr, nullptr, nullptr, nullptr, nullptr};
+    
     // Identificador do controlador GPIO no JetPack 6
     const std::string chipIO = "gpiochip0";
 
@@ -67,6 +70,14 @@ private:
     PinoJetson pinos;
 
 public: 
+    configJetson() = default; // Construtor padrão
+
+    //Destrutor da classe:
+    ~configJetson(){
+        liberaGPIO_Jetson(this->chip_ptr_interno, this->gpios_internas);    
+        std::cout << "Classe configJetson encerrada e hardware liberado." << std::endl;
+    }
+
     // Este método é chamado para configurar o barramento GPIO da Jetson, apenas isso:
     GPIO_Lines configura_GPIO_Jetson(struct gpiod_chip **chip_ptr); 
 
@@ -90,9 +101,15 @@ class LightController {
 private:
     // Preferencialmente usar uma variável atômica em vez de primitiva, pois variáveis 
     // atomicas são mais adequadas para utilização com trheads, pois garantem sincornismo. 
-    std::atomic<bool> is_active{false};
+    std::atomic<bool> is_active;
 
 public:
+    // Construtor da classe, inicializa a variável atômica com um estado seguro (desligado)
+    LightController() : is_active(false) {}
+     
+    ~LightController(){      
+    };
+
     // 
     void setRunning(bool status) {
         is_active = status;
@@ -118,70 +135,77 @@ public:
 
 class PWM {
 private:
-    int export_pwm= 0; // Valor a zer 
-    long period_pwm= 1000000; // Período do pwm em nano segundos. Inicia o pwm com T= 1.000.000 (frequencia de 1kHz), que é o default da Jetson, mais estável.
-    long dutyCicle_pwm= 50; // Dutycicle em percetual (%). Inicia com 50%.
-    bool active_pwm= false; //Quando este valor for true o pulso pwm será liberado na saída.
-    std::string fullPath_pwm_chip = " ";
-    std::string canal_pwm = "pwm0/";
+    int export_pwm; // Valor zero 
+    long period_pwm; // Período do pwm em nano segundos. Inicia o pwm com T= 1.000.000 (frequencia de 1kHz), que é o default da Jetson, mais estável.
+    long dutyCicle_pwm; // Dutycicle em percetual (%). Inicia com 50%.
+    std::atomic<bool> active_pwm; //Quando este valor for true o pulso pwm será liberado na saída.
+
+    std::string fullPath_pwm_chip;
+    std::string canal_pwm;
 
 
     // Este método privado é usado para setar os parâmetros nos respectivos arquivos: periodo, duty-cicle e enable:
     bool writeToFile(std::string file, std::string value) {
         std::ofstream fs(fullPath_pwm_chip + canal_pwm + file);
-        bool write_ok;
         if (fs.is_open()) {
             fs << value;
             fs.close();
-            write_ok= true;
+            return true;
         }
         else
-            write_ok= false;
-        
-        return write_ok; 
+            return false;
     }
 
 public:
+    // Construtor com as devidas inicializações das variáveis menbros privadas:
+    PWM() : export_pwm(0), 
+            period_pwm(1000000), 
+            dutyCicle_pwm(50), 
+            active_pwm(false), 
+            canal_pwm("pwm0/"), 
+            fullPath_pwm_chip(" ") {}
+
+    ~PWM(){        
+    }        
+
      // Seta a variável membro "periodo_pwm", que define a frequencia de trabalho do PWM, padrão é 1kHz:
-    void setPeriodo(long periodo_ns) { 
+    bool setPeriodo(long periodo_ns) { 
         // Atualiza  variável que guarda o periodo:
+        bool set_ok= false;
         period_pwm= periodo_ns;
 
         // Configura o periodo:
         if (writeToFile("period", std::to_string(period_pwm)))
-            std::cout << "Periodo PWM=: "<< period_pwm << std::endl;
-        else
-            std::cout << "[Erro] Não foi possível ajustar periodo pwm." << std::endl;
+            set_ok= true;
+        return set_ok;
     }
     
     // Seta a variável membro "DutyCicle_pwm", que define a frequencia de trabalho do PWM, padrão é 1kHz:
-    void setDutyCycle(long dutyCycle_ns) {
+    bool setDutyCycle(long dutyCycle_ns) {
         dutyCicle_pwm= dutyCycle_ns;
-
+        bool set_ok= false;
+        
         // Configura o duty_cicle
         long dutyCicle_pwm_ns= (dutyCicle_pwm*period_pwm)/100;
         if (writeToFile("duty_cycle", std::to_string(dutyCicle_pwm_ns)))
-            std::cout << "Duty-Cicle PWM=: "<< dutyCicle_pwm << std::endl;
-        else
-            std::cout << "[Erro] Não foi possível ajustar o duty-cicle do pwm." << std::endl;         
+            set_ok= true; 
+        return set_ok;            
     }
 
     // Seta a variável membro "active_pwm", usada para guardar o status de habilitação do pwm.
     // Também habilita a geração do sinal pwm: 
     bool enable() { 
         if (writeToFile("enable", "1"))
-            active_pwm = true;
-        else
-            active_pwm = false;
-        return active_pwm;   
+            active_pwm= true;
+        return active_pwm.load();   
     }
 
 
      // Desabilita o PWM:
     bool disable() { 
         if (writeToFile("enable", "0"))
-            active_pwm = false;
-        return active_pwm;
+            active_pwm= false;
+        return active_pwm.load();
     }
    
 
@@ -199,7 +223,9 @@ public:
         return dutyCicle_pwm;    
     }
 
-
+    bool getStatus(){
+        return active_pwm;
+    }
 
    // Inicializa o canal pwm:
     void inicializa_canal() {
@@ -213,23 +239,5 @@ public:
             export_file << "0"; 
             export_file.close(); 
         }
-
-        // Função "usleep()" serve para dar um tempo para que o hardware seja aajustado, sem um sleep de 1m não consegue setar o hw: 
-        //usleep(100000);
-        
-        // Configura o periodo:
-        //writeToFile("period", std::to_string(period_pwm));
-        
-        //usleep(100000);
-
-        // Configura o duty_cicle
-        //long dutyCicle_pwm_ns= (dutyCicle_pwm*period_pwm)/100;
-       // writeToFile("duty_cycle", std::to_string(dutyCicle_pwm_ns)); 
-
-        //usleep(100000);
-
-        // Habilita o chip a gerar o pulso pwm:
-        //enable();
     }
-
 };
