@@ -1,10 +1,10 @@
-#include "camera_conv.h"
+#include "conv_camera.h"
 #include "Spinnaker.h"
 #include <string>
 
 
 // O construtor da classe camera_conv:
-CameraConv::CameraConv(std::string serial) 
+ConvCamera::ConvCamera(std::string serial) 
     : serialNumber(serial), inicializada(false) {
 
     // Inicializa a camada de transporte e os recursos de sistema do SDK, vinculando a instância 
@@ -14,11 +14,11 @@ CameraConv::CameraConv(std::string serial)
 
 
 // Destruidor da classe camera_conv:
-CameraConv::~CameraConv() {
+ConvCamera::~ConvCamera() {
     close();
 }
 
-bool CameraConv::open() {
+bool ConvCamera::open() {
     try {
         Spinnaker::CameraList camList = system->GetCameras();
         
@@ -45,7 +45,7 @@ bool CameraConv::open() {
     }
 }
 
-void CameraConv::close() {
+void ConvCamera::close() {
     try {
         if (inicializada && pCam.IsValid()) {
             pCam->DeInit();
@@ -65,7 +65,7 @@ void CameraConv::close() {
     }
 }
 
-void CameraConv::exibir_configuracao() {
+void ConvCamera::exibir_configuracao() {
     if (!inicializada) {
         std::cout << "Câmera não inicializada." << std::endl;
         return;
@@ -80,15 +80,15 @@ void CameraConv::exibir_configuracao() {
     }
 }
 
-std::string CameraConv::get_serial() const {
+std::string ConvCamera::get_serial() const {
     return serialNumber;
 }
 
-bool CameraConv::is_ok() const {
+bool ConvCamera::is_ok() const {
     return inicializada;
 }
 
-Spinnaker::GenApi::INodeMap& CameraConv::get_nodemap() {
+Spinnaker::GenApi::INodeMap& ConvCamera::get_nodemap() {
     if (!inicializada) {
         throw std::runtime_error("Tentativa de acessar NodeMap de câmera não inicializada!");
     }

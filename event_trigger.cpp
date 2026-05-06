@@ -6,67 +6,19 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
-#include <nlohmann/json.hpp>
 #include <iomanip>
 
 #include <opencv2/opencv.hpp>
 #include <opencv2/highgui.hpp>
 #include <opencv2/imgproc.hpp>
-#include <metavision/sdk/stream/camera.h>
 #include <metavision/sdk/core/utils/cd_frame_generator.h>
-#include <metavision/hal/facilities/i_trigger_in.h>
-#include <metavision/hal/facilities/i_ll_biases.h>
-#include <metavision/hal/device/device_discovery.h>
 #include <vector>
 
 #include "Spinnaker.h"
-#include "camera_conv.h"
+#include "conv_camera.h"
+#include "event_camera.h"
 #include "controlIO.h"
-
-using json = nlohmann::json;
-
-// Simples rotina para limpar a tela:
-void limparTela() {
-    // \033[2J: Limpa a tela inteira
-    // \033[H: Move o cursor para a posição inicial (canto superior esquerdo)
-    std::cout << "\033[2J\033[H" << std::flush;
-}
-
-
-// Função que busca os valores dos biases no arquivo .json com as confuguraçloes da câmera:
-int lerJsonFile(std::string path, std::string biasName){
-    std::ifstream file(path);
-    if (!file.is_open()) 
-        return -1;
-
-    json data;
-    file >> data;
-
-    // Navega na estrutura: ll_biases_state -> bias (que é um array)
-    auto biases = data["ll_biases_state"]["bias"];
-
-    for (auto& item : biases) {
-        if (item["name"] == biasName) {
-            return item["value"];
-        }
-    }
-    std::cout << "Erro!!! Campo de leitura: " << biasName << " não encontrado no arquivo: "<< path << std::endl;
-    return -1; // Não encontrado
-}
-
-
-// Função que gera trem de N pulsos, onde N é definido por numPulse:
-void pulseTrigger(int numPulse, gpiod_line *line, int pin, int64_t duracaoPulso){
-    std::cout << " Gerando pulso de: " << duracaoPulso << "ms no pino: "<< pin << std::endl;
-
-    for (int ctPulse=0; ctPulse<numPulse; ctPulse++){
-        gpiod_line_set_value(line, 1);
-        std::this_thread::sleep_for(std::chrono::milliseconds(duracaoPulso));
-        gpiod_line_set_value(line, 0);
-        std::this_thread::sleep_for(std::chrono::milliseconds(duracaoPulso));
-    }
-    std::cout << " Pulso finalizado." << std::endl;
-}
+#include "parametros.h"
 
 
 // Funação que gera o menu de opções:
@@ -89,15 +41,38 @@ void showMenu(int pinTrigger, int pinLed, int64_t duracao){
 }
 
 
+// Simples rotina para limpar a tela:
+void limparTela() {
+    // \033[2J: Limpa a tela inteira
+    // \033[H: Move o cursor para a posição inicial (canto superior esquerdo)
+    std::cout << "\033[2J\033[H" << std::flush;
+}
+
+
+// Função que gera trem de N pulsos, onde N é definido por numPulse:
+void pulseTrigger(int numPulse, gpiod_line *line, int pin, int64_t duracaoPulso){
+    std::cout << " Gerando pulso de: " << duracaoPulso << "ms no pino: "<< pin << std::endl;
+
+    for (int ctPulse=0; ctPulse<numPulse; ctPulse++){
+        gpiod_line_set_value(line, 1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(duracaoPulso));
+        gpiod_line_set_value(line, 0);
+        std::this_thread::sleep_for(std::chrono::milliseconds(duracaoPulso));
+    }
+    std::cout << " Pulso finalizado." << std::endl;
+}
+
+
+
 // 
-void saveDataFileWithTrigger(Metavision::Camera &cam, gpiod_line *line, int64_t duracao_trigger_microSeg, int64_t duracao_PreTrigger_microSeg, int64_t duracao_PosTrigger_microSeg, std::string serial) {
+void saveDataFileWithTrigger(EventCamera &cam, gpiod_line *line, const PARAMETROS_GERAIS &params) {
     try {
         // Obter data para o nome da pasta e do arquivo:
         auto agora = std::chrono::system_clock::now();
         auto tempo_t = std::chrono::system_clock::to_time_t(agora);
         struct tm *info = std::localtime(&tempo_t);
 
-        // gera o noem do diretório:
+        // gera o nome do diretório:
         std::stringstream ss_pasta;
         ss_pasta << "data_evecam_" << std::put_time(info, "%d_%m_%Y");
         std::string nome_pasta = ss_pasta.str();
@@ -107,172 +82,50 @@ void saveDataFileWithTrigger(Metavision::Camera &cam, gpiod_line *line, int64_t 
             std::filesystem::create_directory(nome_pasta);
         }
 
-        // Gera o nomde do arquivo de dados .raw:
-        std::stringstream ss_file;
-        ss_file << "evecam_sn_" << serial << "_" << std::put_time(info, "%H%M%S") << ".raw";        
-        std::string filename= ss_file.str();
-
-        // Gera full path para salvar o arquivo de dados:
+        // Gera o nome do arquivo de dados .raw:
+        std::string serialNumber= cam.getSerial();
+        std::stringstream ss_time;
+        ss_time << std::put_time(info, "%H%M%S");
+        std::string time= ss_time.str();
+        std::string filename= "evecam_sn_" + serialNumber + "_" + time + ".raw";
         std::string full_path = nome_pasta + "/" + filename;
         
 
         // Inicia Gravação doarquivo de dados:
-        cam.start_recording(full_path);
+        if (cam.startRecording(full_path)){;
         
-        // Pré-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg para garantir que o arquivo foi aberto e o buffer inicializou:
-        std::this_thread::sleep_for(std::chrono::microseconds(duracao_PreTrigger_microSeg));
+            // Pré-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg para garantir que o arquivo foi aberto e o buffer inicializou:
+            std::this_thread::sleep_for(std::chrono::microseconds(params.duracao_pre_trigger));
+            
 
-        // *******************Início do pulso de trigger**************** 
-        // Transição do trigger para nível alto:
-        gpiod_line_set_value(line, 1);  
+            // *******************Início do pulso de trigger**************** 
+            // Transição do trigger para nível alto:
+            gpiod_line_set_value(line, 1);  
 
-        // Mantém o pulso em nivel alto pelo tempo especificado em "duracao_trigger_microSeg":
-        std::this_thread::sleep_for(std::chrono::microseconds(duracao_trigger_microSeg));
+            // Mantém o pulso em nivel alto pelo tempo especificado em "duracao_pulso_trigger_microSeg":
+            std::this_thread::sleep_for(std::chrono::microseconds(params.duracao_pulso_trigger));
 
-        // Transição do trigger para nível alto:
-        gpiod_line_set_value(line, 0);
-        // ********************Fim do pulso de trigger******************
+            // Transição do trigger para nível alto:
+            gpiod_line_set_value(line, 0);
+            // ********************Fim do pulso de trigger******************
 
-        // Pós-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg antes de fecahr o arquivo de dados: 
-        std::this_thread::sleep_for(std::chrono::microseconds(duracao_PosTrigger_microSeg));
+            // Pós-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg antes de fecahr o arquivo de dados: 
+            std::this_thread::sleep_for(std::chrono::microseconds(params.duracao_pos_trigger));
 
-        // Finaliza a Gravação e fecha arquivo de dados:
-        if (cam.stop_recording()){
-            std::cout << "Salvando dados ....." << std::endl;
-            std::cout << "Dados salvos no arquivo: " << "\"" << filename << "\"" << std::endl;
-        }
-        else{
-            std::cout << "!!!ERRO ao fechar arquivo:" << filename << std::endl;
+            // Finaliza a Gravação e fecha arquivo de dados:
+            if (cam.stopRecording()){
+                std::cout << "Salvando dados ....." << std::endl;
+                std::cout << "Dados salvos no arquivo: " << "\"" << filename << "\"" << std::endl;
+            }
+            else{
+                std::cout << "!!!ERRO ao fechar arquivo:" << filename << std::endl;
 
+            }
         }
 
     } catch (const std::exception &e) {
         std::cerr << "[ERRO] Falha na thread de captura: " << e.what() << std::endl;
     }
-}
-
-
-
-// Função chamada para a leitura dois Biases da câmera de eventos:
-void readCameraBiases(Metavision::Camera &cam) {
-    try {
-        // Acessar via HAL explicitamente:
-        auto *biases = cam.get_device().get_facility<Metavision::I_LL_Biases>();
-
-        if (biases) {
-            std::cout << "\n--- Configuracao Atual de Biases (HD Sensor) ---" << std::endl;
-            
-            // Lista de biases comuns no IMX636 para verificar manualmente
-            std::vector<std::string> bias_names = {
-                 "bias_diff", "bias_diff_on", "bias_diff_off", "bias_fo", "bias_hpf", "bias_refr"
-            };
-
-            for (const auto& name : bias_names) {
-                try {
-                    int val = biases->get(name);
-                    std::cout << " Bias: " << std::left << std::setw(15) << name 
-                              << " | Valor: " << val << std::endl;
-                } catch (...) {
-                    // Se um nome específico não existir neste modelo, ignore
-                }
-            }
-        }
-    } catch (const std::exception &e) {
-        std::cerr << "Erro: " << e.what() << std::endl;
-    }    
-}
-
-
-
-// Função chamada para a leitura dois Biases da câmera de eventos:
-int loadCameraBiases(Metavision::Camera &cam) {
-
-    // Os biases max e min. são definidos em https://docs.prophesee.ai/stable/hw/manuals/biases.html 
-    // Os calores para a ca~mera SilkyEvCam pertencem a geração Gen3.1 VGA, assim os valores máximos e mínimo
-    // são deinfidos como:
-    
-    const int bias_diff_default= 299; // Não alterar o valor do bias_diff, o default é 299.
-    
-    int bias_diff_on_min= bias_diff_default + 75; // O valor mínimo do bias_diff_on é bias_dif_default + 75.
-    int bias_diff_on_max= bias_diff_default + 200; // O valor máximo do bias_diff_on é bias_dif_default + 200.
-    
-    int bias_diff_off_min= 100; // O valor mínimo do bias_diff_off é 100.
-    int bias_diff_off_max= bias_diff_default - 65; // O valor máximo do bias_diff_off é bias_dif_default -65
-    
-    int bias_fo_min= 1250;
-    int bias_fo_max= 1800;
-    
-    int bias_hpf_min= 900;
-    int bias_hpf_max= 1800;
-   
-    int bias_refr_min= 1300;
-    int bias_refr_max= 1800;
-
-    std::string fileName= "settings.json";
-
-    std::string path= "../";
-
-    std::string fullPath = path + '/' + fileName;
-
-    // ANtes de gravar os valores de biases na camera verifica se os valores extrapolam os limites:
-    int bias_diff_off= lerJsonFile(fullPath, "bias_diff_off");
-    if (bias_diff_off<bias_diff_off_min || bias_diff_off>bias_diff_off_max){
-        std::cout<< "ERRO!! O valor de bias_diff_off= "<< bias_diff_off << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_diff_off_min << " e " << bias_diff_off_max << std::endl;  
-        return -1;
-    }
-
-    int bias_diff_on= lerJsonFile(fullPath, "bias_diff_on");
-    if (bias_diff_on<bias_diff_on_min || bias_diff_on>bias_diff_on_max){
-        std::cout<< "ERRO!! O valor de bias_diff_on= "<< bias_diff_on << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_diff_on_min << " e " << bias_diff_on_max << std::endl;  
-        return -1;
-    }
-
-    int bias_fo= lerJsonFile(fullPath, "bias_fo");
-    if (bias_fo<bias_fo_min || bias_fo>bias_fo_max){
-        std::cout<< "ERRO!! O valor de bias_fo= "<< bias_fo << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_fo_min << " e " << bias_fo_max << std::endl;  
-        return -1;
-    }   
-    
-    int bias_hpf= lerJsonFile(fullPath, "bias_hpf");
-    if (bias_hpf<bias_hpf_min || bias_hpf>bias_hpf_max){
-        std::cout<< "ERRO!! O valor de bias_hpf= "<< bias_hpf << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_hpf_min << " e " << bias_hpf_max << std::endl;
-        return -1;  
-    }   
-
-    int bias_refr= lerJsonFile(fullPath, "bias_refr");
-    if (bias_refr<bias_refr_min || bias_refr>bias_refr_max){
-        std::cout<< "ERRO!! O valor de bias_refr= "<< bias_refr << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_refr_min << " e " << bias_refr_max << std::endl; 
-        return -1; 
-    }  
-
-
-    // Acessa a Facility de Biases de baixo nível:
-    auto *i_ll_biases = cam.get_device().get_facility<Metavision::I_LL_Biases>();
-    // Testa se o acesso foi liberado:
-    if (!i_ll_biases) {
-        std::cerr << "[Erro] Nao foi possivel acessar a interface de Biases do hardware!" << std::endl;
-        return -1;
-    }
-
-    // Atualzia os biases na câmera:
-    try {
-        // Atuazia os valores um por um diretamente no registrador do sensor. Este processo é "on-the-fly", sem precisar de cam.stop()
-        i_ll_biases->set("bias_diff_on", bias_diff_on);
-        i_ll_biases->set("bias_diff_off", bias_diff_off);
-        i_ll_biases->set("bias_fo", bias_fo);
-        i_ll_biases->set("bias_hpf", bias_hpf);
-        i_ll_biases->set("bias_refr", bias_refr);
-
-        std::cout << "[OK] Biases atualizados na câmera com dados do arquivo: \""<< fileName.c_str() << "\"" << std::endl;
-        return 0;
-    } catch (const std::exception &e) {
-        std::cerr << "[Erro] Não foi possível gravar biases na câmera!!! " << e.what() << std::endl;
-        return -1;
-    }   
-
-    // Abaixo segue um método aleternativo para setar os biases da camera, ele é de mais alto nível, com apenas 1 linha:
-    // cam.load(path.c_str());
-    return 0;
 }
 
 
@@ -401,6 +254,8 @@ int main(int argc, char *argv[]) {
     // Rotina que limpa o terminal:
     limparTela();
 
+    PARAMETROS_GERAIS parametros_gerais;
+
     // Declaração variaveis booleans do tipo atomic:
     std::atomic<bool> useCamera_Conv(true);
     std::atomic<bool> useCamera_Event(true);
@@ -414,45 +269,28 @@ int main(int argc, char *argv[]) {
     //********************************************************************************************/
     //********** Configuração da camera convencional FLIR (Model BlackFly BFS-U3-04S2M) **********/
     //********************************************************************************************/
-    std::unique_ptr<CameraConv> cam_conv_A = nullptr;
-    const std::string serialNumber_conv_cam0= "25083333";
-    const std::string serialNumber_conv_cam1= "00000414";
+    std::unique_ptr<ConvCamera> convCam_01 = nullptr;
 
     // Instancia o  objeto da camera convencional apenas se estiver habilitado este procedimento.
     if (useCamera_Conv.load()){
         // Cria a instância da classe "camera_conv" e atribuímos ao ponteiro do main:
-        cam_conv_A = std::make_unique<CameraConv>(serialNumber_conv_cam0);
+        convCam_01 = std::make_unique<ConvCamera>(parametros_gerais.serialNumber_conv_cam_01);
 
         // Caham o método open definido na classe:
-        if (!cam_conv_A->open()) {
+        if (!convCam_01->open()) {
             std::cerr << "[Error] Falha ao abrir a camera USB." << std::endl;
-            cam_conv_A.reset(); // Destrói o objeto se a abertura falhar
+            convCam_01.reset(); // Destrói o objeto se a abertura falhar
         } else {
-            cam_conv_A->exibir_configuracao();
+            convCam_01->exibir_configuracao();
         }
     }    
 
-    /*Parei aqui!! instanciei o objeto para a camera convecnional, fala continuar o codigo!!!
-    Até aqui compilou ok!!! Consegue abrir a camera com o S/N "25083333".
-    Confirmei com o Debug.
-    */
+
 
     //********************************************************************************************/
     //****************************** Configuração GPIO da Jetson *******************************/
     //********************************************************************************************/
 
-    // Definiçao dos números de série das câmeras de eventos:
-    const std::string serialNumber_event_cam0= "00000414"; // HD
-    const std::string serialNumber_event_cam2= "00000679"; // VGA
-    const std::string serialNumber_event_cam3= "00000680"; // VGA
-
-    //Define duração de alguns pulsos:
-    int64_t duracao_PulsoTrigger_microSeg= 1000000;//30000; // em micro segundos
-    int64_t duracao_PreTrigger_microSeg= 50000; // em micro segundos
-    int64_t duracao_PosTrigger_microSeg= 50000; // em micro segundos
-    int64_t duracao_PulsoLed_microSeg= 200000; // em micro segundos;
-    int numero_de_Ciclos_Trigger= 10;
- 
     // Declara o ponteiro do chip aqui para poder ser fechado dentro do main:
     struct gpiod_chip *chip = nullptr;
 
@@ -497,117 +335,47 @@ int main(int argc, char *argv[]) {
     // Define se está usando o led de potencia LT2PR da Opto Engineering
     bool useLed_LT2PR= true;
 
-    // Definição dos paths referentes aos chips de IO da Jeson que geram o PWM: 
-    const std::string channelToExport_A= "/sys/class/pwm/pwmchip3/"; // 
-    const std::string channelToExport_B= "/sys/class/pwm/pwmchip2/"; // 
-
     // Instanciando os objetos PWM com a classe PWM:
     PWM pwm_BlinkLed;
     PWM pwm_PowerLed;
 
-    // Definição do Duty-cicle:
-    long dutyCicle_PWM_A= 5;  // Valor em nano segundos. PWM referente ao controle do duty cicle para blink led.
-    long dutyCicle_PWM_B= 10;  // Valor em nano segundos. PWM referente ao controle da tensão.
-
-    // Definição do periodo dos PWMs, valor em nano segundos. 
-    //long periodo_PWM_A= 100000000;  // 100ms, valor em nano segundos. 
-    long periodo_PWM_A= 10000000;  // 10ms, valor em nano segundos.
-
-    long periodo_PWM_B= 1000000;  // 1ms, valor em nano segundos. 
-
     // Chama função para configurar os canais PWMs: 
     // Configura canal PWM para trabalhar com o pulso do Led:
-    configuraPWM(pwm_BlinkLed, channelToExport_A, periodo_PWM_A, dutyCicle_PWM_A, "Canal A", false);
+    configuraPWM(pwm_BlinkLed, parametros_gerais.channelToExport_A, parametros_gerais.periodo_PWM_A, parametros_gerais.dutyCicle_PWM_A, "Canal A", false);
     // Configura canal PWM para trabalhar com o controle da potência do Led:
-    configuraPWM(pwm_PowerLed, channelToExport_B, periodo_PWM_B, dutyCicle_PWM_B, "Canal B", true);
+    configuraPWM(pwm_PowerLed, parametros_gerais.channelToExport_B, parametros_gerais.periodo_PWM_B, parametros_gerais.dutyCicle_PWM_B, "Canal B", true);
 
-    // Define a variável que contém o tempo de duração que o LEd irá píscar:
-    int duracao_PulsoLed_miliSeg= 20; // em micro segundos;
-    
+   
 
     //********************************************************************************************/
-    //*************************** Configuração da camera de eventos ***********************/
+    //*************************** Configuração da camera de eventos ******************************/
     //********************************************************************************************/
+
+    // Instancia o objeto event_cam_xx para operar com a camera de eventos:
+    EventCamera event_cam_01(parametros_gerais.serialNumber_event_cam3);
+   
     // Booleano que define se a câmera usada é HD ou VGA:    
     bool sensorHD= false;    
 
     // 1- Instancia um objeto "camera" da classe "Metavision::camera":
-    Metavision::Camera camera;
-    try {
-        //camera = Metavision::Camera::from_first_available();
-        //camera = Metavision::Camera::from_serial(serialNumber_event_cam0);
-        camera = Metavision::Camera::from_serial(serialNumber_event_cam3);
-    } 
-    catch (const Metavision::CameraException &e) {
-        std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
-        try{
-            // Captura a lista de seriais de todas as câmeras conectadas
-            Metavision::DeviceDiscovery::SerialList dispositivos= Metavision::DeviceDiscovery::list();
-            if (!dispositivos.empty()){
-                int numDevices= dispositivos.size();
-                std::cout << "Cameras conectadas:" << std::endl;
-                for (int ct=0; ct<numDevices; ct++){
-                    // std::next(iterador_inicial, n_posições)
-                    auto it = std::next(dispositivos.begin(), ct);
-                    std::string sn = *it; 
-                    
-                    std::cout << "Câmera [" << ct << "] - Serial: " << sn << std::endl;
-                }
-            }
-            else{
-               std::cerr << "Nenhuma câmera de eventos detectada no barramento USB." << std::endl; 
-            }
-        }
-        catch (const std::exception &e) {
-            std::cerr << "[ERRO] Falha ao escanear barramento USB." << e.what() << std::endl;
-        }
-        return 1;
+    //Metavision::Camera camera_01;
+
+
+    // Chama função para inicializar a camera de eventos:
+    if (!event_cam_01.openEventCam()){
+        std::cerr << "Não foi possível abrir camera de eventos." << std::endl;
     }
 
-    // Variáveis que guardam os dados da camera:
-    std::string serial_cam_1= "unknow";
-    std::string versionFirm= "unknow";
-    std::string dataEncodeFormat= "unknow";
-    std::string plugin= "unknow";
-    std::string fabricante= "unknow";
-
-
-    // Captura dados da câmera instanciada:
-    try {
-        fabricante = camera.get_camera_configuration().integrator;
-        std::cout << std::endl;
-        std::cout << "Plugin versão: " << fabricante << std::endl; 
-
-        plugin = camera.get_camera_configuration().plugin_name;
-        std::cout << "Plugin versão: " << plugin << std::endl; 
-
-        serial_cam_1 = camera.get_camera_configuration().serial_number;
-        std::cout << "Nº Serial cam: " << serial_cam_1 << std::endl;
-
-        versionFirm = camera.get_camera_configuration().firmware_version;
-        std::cout << "Versão do firmware: " << versionFirm << std::endl;
-
-        dataEncodeFormat = camera.get_camera_configuration().data_encoding_format;
-        std::cout << "Formato dos dados: " << dataEncodeFormat << std::endl;
-        std::cout << std::endl;
-    } 
-    catch (...) {
-        std::cout << "Nao foi possivel obter o serial via CameraConfiguration." << std::endl;
-    }
+    // Captura alguns parametros, definidos em paramsEvCam_01, da camera de eventos :
+    event_cam_01.getParametrosGeraisEventCam();
+    
 
     // Carregando os biases na camera de eventos definidos em setings.json:
-    // camera.save("../settings.json");
-    if (loadCameraBiases(camera))
+    if (!event_cam_01.setBias())
         std::cout << "ERRO!! Biases não gravado na câmera." << std::endl;
-
-
-    // Para transformas os eventos em imagens:
-    // Obtém as dimensões do sensor:
-    const auto &geometry = camera.geometry();
     
-    // Cria um buffer de memória com as dimensões, geometria, obtidas acima.
-    // Equivale a um tradutor de eventos para imagens:
-    Metavision::CDFrameGenerator cd_frame_generator(geometry.get_width(), geometry.get_height());
+    Metavision::CDFrameGenerator cd_frame_generator(event_cam_01.getWidth(), event_cam_01.getHeight());
+
     
     // Define o tempo de exposição dos eventos acumulados.
     // Aguarda acumular 10.000 us (10ms) de eventos para exibição: 
@@ -626,8 +394,9 @@ int main(int argc, char *argv[]) {
         }
     });
 
+
     // Callback para processar eventos CD
-    camera.cd().add_callback([&](const Metavision::EventCD *ev_begin, const Metavision::EventCD *ev_end) {
+    event_cam_01.setCDCallback([&](const Metavision::EventCD *ev_begin, const Metavision::EventCD *ev_end) {
         if (show_viewer) {
             cd_frame_generator.add_events(ev_begin, ev_end);
         }
@@ -635,15 +404,13 @@ int main(int argc, char *argv[]) {
 
 
     // Habilita Trigger via HAL API
-    auto *i_trigger_in = camera.get_device().get_facility<Metavision::I_TriggerIn>();
-    if (i_trigger_in) {
-        i_trigger_in->enable(Metavision::I_TriggerIn::Channel::Main);
-        std::cout << std::endl;
-        std::cout << "Trigger habilitado para ambas as bordas, Risinge e Falling edge." << std::endl;
+    if(event_cam_01.enableHardwareTrigger()){
+          std::cout << std::endl;
+        std::cout << "Trigger habilitado para ambas as bordas, Risinge e Falling edge." << std::endl;      
     }
 
     // Start camera de eventos:
-    camera.start();
+    event_cam_01.start();
 
     // Dummy Trigger: "Acorda" o canal de trigger da Metavision
     gpiod_line_set_value(gpios_actives.triggerEventCam, 1);
@@ -683,7 +450,7 @@ int main(int argc, char *argv[]) {
         /// Exibe menu de escolha:
         if (hab_exibe_menu){
             //limparTela();
-            showMenu(pin_TriggerEventCam, pin_PiscaLed, duracao_PulsoTrigger_microSeg);
+            showMenu(pin_TriggerEventCam, pin_PiscaLed, parametros_gerais.duracao_pulso_trigger);
             hab_exibe_menu= false;
         }
 
@@ -695,29 +462,25 @@ int main(int argc, char *argv[]) {
             {
                 case '1':
                         // Efetua a leitura dos biases da camera de eventos:
-                        readCameraBiases(camera);
+                        event_cam_01.readCameraBiases();
                         break;
                 
                 case '2':
-                        // Chama função para configurar, enviar, os biases à camera de eventos: 
-                        loadCameraBiases(camera);
+                        // Chama função para configurar, enviar, os biases à camera de eventos:                    
+                        event_cam_01.setBias();
                         break;
 
                 case '3':
                         {
-                            std::cout << "\nTrigger Com duração de: "<< duracao_PulsoTrigger_microSeg << "us" << std::endl;
+                            std::cout << "\nTrigger Com duração de: "<< parametros_gerais.duracao_pulso_trigger << "us" << std::endl;
 
                             // Neste caso é melhor ativar uma thread usando uma função lambda, pois são passadas mais de uma função para ela:
                             std::thread t([&]() { 
-                                for (int ctCiclo=0;  ctCiclo < numero_de_Ciclos_Trigger; ctCiclo++){                           
+                                for (int ctCiclo=0;  ctCiclo < parametros_gerais.numero_ciclos_trigger; ctCiclo++){                           
                                     // Primeira ativa a projeção da luz estruturada:
-                                    ativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
-        
-                                    // Passando o objeto camera, o ponteiro da linha GPIO e a duração do pulso trigger
-                                    saveDataFileWithTrigger(std::ref(camera), gpios_actives.triggerEventCam, 
-                                                            duracao_PulsoTrigger_microSeg, duracao_PreTrigger_microSeg, 
-                                                            duracao_PosTrigger_microSeg, serial_cam_1);
-                                                                
+                                    ativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);                                     
+                                    //Passando o objeto camera, o ponteiro da linha GPIO e a duração do pulso trigger
+                                    saveDataFileWithTrigger(event_cam_01, gpios_actives.triggerEventCam, parametros_gerais);                                                               
                                     // Por ultimo, desativa o projeção de luz estruturada:
                                     desativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
                                 }
@@ -741,7 +504,7 @@ int main(int argc, char *argv[]) {
                 
                 case '.':
                 case '>': // Incrementa o pwm que controla o tempo de atuação do Led, duração do blink do Led
-                        incrementaPWM(pwm_BlinkLed, "Blink Led", useLed_LT2PR);
+                        incrementaPWM(pwm_BlinkLed, "Blink Led", parametros_gerais.useLed_LT2PR);
                         break;    
 
                 case ',':    
@@ -751,7 +514,7 @@ int main(int argc, char *argv[]) {
 
                 case '+':
                 case '=': // Incrementa o pwm que controla a tensão analogica do Led (0 a 10V) ou laser (o a 5V):
-                        incrementaPWM(pwm_PowerLed, "Tensão do Led", false);                                 
+                        incrementaPWM(pwm_PowerLed, "Tensão do Led", "false");                                 
                         break;
 
                 case '-':
@@ -781,7 +544,7 @@ int main(int argc, char *argv[]) {
 
     // *********** Finalização e limpeza:
     // Fecha a câmera:  
-    camera.stop();
+    event_cam_01.stop();
 
     // Para o gerador de frame:
     cd_frame_generator.stop();

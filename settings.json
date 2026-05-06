@@ -14,7 +14,7 @@
    },
    {
     "name": "bias_diff_off",
-    "value": 150
+    "value": 100
    },
    {
     "name": "bias_diff_on",

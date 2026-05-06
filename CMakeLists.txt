@@ -39,7 +39,7 @@ include_directories(
 )
 
 # 3. Definição do Executável
-set(SOURCE_FILE event_trigger.cpp controlIO.cpp camera_conv.cpp) # 
+set(SOURCE_FILE event_trigger.cpp controlIO.cpp conv_camera.cpp event_camera.cpp) # 
 add_executable(event_trigger ${SOURCE_FILE})
 
 # 4. Linkagem de Bibliotecas

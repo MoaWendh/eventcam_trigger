@@ -5,7 +5,7 @@
 #include <string>
 #include <iostream>
 
-class CameraConv {
+class ConvCamera {
 private:
     // Objeto syste unico do tipo Singleton da classe Spinnaker::SystemPtr:
     Spinnaker::SystemPtr system;
@@ -23,8 +23,8 @@ private:
 
 public:
     // Construtor que recebe o Serial Number:
-    CameraConv(std::string serial);
-    ~CameraConv();
+    ConvCamera(std::string serial);
+    ~ConvCamera();
 
     // Métodos principais:
     bool open();
