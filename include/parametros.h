@@ -34,6 +34,13 @@ struct PARAMETROS_GERAIS {
     
     // Define se está usando o led de potencia LT2PR da Opto Engineering
     bool useLed_LT2PR= true;
+
+    // Declaração variaveis booleans do tipo atomic:
+    bool useCamera_Conv= true;
+    bool useCamera_Event= true;  
+    
+    // Flag que habilita menu:
+    bool hab_exibe_menu= true;      
 };
 
 #endif

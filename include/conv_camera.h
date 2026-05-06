@@ -5,38 +5,28 @@
 #include <string>
 #include <iostream>
 
-class ConvCamera {
+// Esta classe ConvCamera herda todos os métodos e atributos da classe Spinnaker::camera:
+class ConvCamera : public Spinnaker::Camera {
 private:
-    // Objeto syste unico do tipo Singleton da classe Spinnaker::SystemPtr:
-    Spinnaker::SystemPtr system;
-    
-    // "pCam" é um ponteiro inteligente que atua como a interface de controle direto da câmera. 
-    // Ele encapsula o acesso aos registros de hardware (NodeMap), gerencia o fluxo de 
-    // aquisição de imagens e garante a persistência da conexão com o dispositivo enquanto o objeto estiver aberto.
-    Spinnaker::CameraPtr pCam;
-    
-    // Guarda o numero de série da camera referent a este objeto:
-    std::string serialNumber;
-
     // Apenas guarda o estado aual da camera instanciada:
     bool inicializada;
 
 public:
-    // Construtor que recebe o Serial Number:
-    ConvCamera(std::string serial);
-    ~ConvCamera();
 
-    // Métodos principais:
-    bool open();
-    void close();
-    void exibir_configuracao();
-
-    // Getters:
-    std::string get_serial() const;
-    bool is_ok() const;
-    
-    // Método para obter o NodeMap (necessário para triggers e parâmetros)
     Spinnaker::GenApi::INodeMap& get_nodemap();
+
+    ConvCamera();
+    virtual ~ConvCamera();
+
+    // Sobrescrevemos os métodos:
+    void Init();
+    void DeInit();
+
+    void exibir_modelo_camera();
+    std::string get_serial() const;
+    bool is_ok();
+
+    Spinnaker::ImagePtr capturarImagem();    
 };
 
 #endif

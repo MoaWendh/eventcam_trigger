@@ -29,6 +29,7 @@ void showMenu(int pinTrigger, int pinLed, int64_t duracao){
     std::cout << " 2 - Gravar biases na câmera" << std::endl;   
     std::cout << " 3 - Trigger: iniciar gravacao de eventos (.raw)" << std::endl;       
     std::cout << " 4 - Start/Stop blink Led"<< std::endl;
+    std::cout << " 5 - Captura imagem pela cam. convencinal"<< std::endl;    
     std::cout << " > - Incrementa pulso Led" << std::endl;
     std::cout << " < - Decrementa pulso Led" << std::endl;
     std::cout << " + - Incrementa potência Led" << std::endl;
@@ -254,37 +255,8 @@ int main(int argc, char *argv[]) {
     // Rotina que limpa o terminal:
     limparTela();
 
+    // Carrea os parametros gerais definidos na struct "PARAMETROS_GERAIS" do header "parametros.h":
     PARAMETROS_GERAIS parametros_gerais;
-
-    // Declaração variaveis booleans do tipo atomic:
-    std::atomic<bool> useCamera_Conv(true);
-    std::atomic<bool> useCamera_Event(true);
-
-    // Flag que habilita ou não o menu, apenas para testes:
-    bool hab_exibe_menu= true;  
-    
-    // Flaque que inicializa o loop while:
-    bool running = true; 
-
-    //********************************************************************************************/
-    //********** Configuração da camera convencional FLIR (Model BlackFly BFS-U3-04S2M) **********/
-    //********************************************************************************************/
-    std::unique_ptr<ConvCamera> convCam_01 = nullptr;
-
-    // Instancia o  objeto da camera convencional apenas se estiver habilitado este procedimento.
-    if (useCamera_Conv.load()){
-        // Cria a instância da classe "camera_conv" e atribuímos ao ponteiro do main:
-        convCam_01 = std::make_unique<ConvCamera>(parametros_gerais.serialNumber_conv_cam_01);
-
-        // Caham o método open definido na classe:
-        if (!convCam_01->open()) {
-            std::cerr << "[Error] Falha ao abrir a camera USB." << std::endl;
-            convCam_01.reset(); // Destrói o objeto se a abertura falhar
-        } else {
-            convCam_01->exibir_configuracao();
-        }
-    }    
-
 
 
     //********************************************************************************************/
@@ -347,6 +319,54 @@ int main(int argc, char *argv[]) {
 
    
 
+
+    //********************************************************************************************/
+    //********** Configuração da camera convencional FLIR (Model BlackFly BFS-U3-04S2M) **********/
+    //********************************************************************************************/
+    // Instancia um objeto do tipo COnvCamera: 
+    ConvCamera* convCam_01 = nullptr;
+
+    // Instanciar o Singleton: é uma instância única do sistema que gerencia a comunicação com o hardware para acessar a camera.
+    // Carrega a Camada de Transporte: Inicializa os drivers e protocolos (USB3, GigE) necessários para detectar e conversar com as câmeras.
+    // Ponto de Entrada: É o objeto obrigatório para listar dispositivos e gerenciar o ciclo de vida da SDK.
+    Spinnaker::SystemPtr system = Spinnaker::System::GetInstance();
+
+    // Varredura das portas: Escaneia as interfaces (USB/GigE) em busca de câmeras conectadas.
+    // Cria uma lista contendo referências (objetos CameraPtr) para todos os dispositivos encontrados.
+    // Permite localizar uma câmera específica, por exemplo pelo nº de Serie para começar a operá-la.
+    Spinnaker::CameraList camList = system->GetCameras();
+
+    // Instancia o  objeto da camera convencional apenas se estiver habilitado este procedimento.
+    if (parametros_gerais.useCamera_Conv){
+
+        // Busca Seletiva: Percorre a lista de câmeras detectadas procurando o identificador único, Serial Number, definido nos parametros_gerais.
+        // Verifica se a câmera desejada está conectada e disponível antes de iniciar a operação.
+        Spinnaker::CameraPtr pCamBase = camList.GetBySerial(parametros_gerais.serialNumber_conv_cam_01);
+
+        // Testa se a camera com o referido nº de séri foi encontrada:
+        if (!pCamBase.IsValid()) {
+            std::cerr << "Câmera não encontrada!" << std::endl;
+            return -1;
+        }
+
+        // Conversão de Tipo: Transforma o ponteiro genérico da SDK, Spinnaker::Camera*, no tipo definido pela minha classe ConvCamera: 
+        // Permite acesso aos métodos e atributos personalizados especificos da classe ConvCamera e também da classe original da FLIR, que foi herdada.
+        // Desta forma, a classe ConmvCamera terá acesso a toda as funções e metodos da classe Spinnaker::Camera:
+        convCam_01 = static_cast<ConvCamera*>(pCamBase.get());
+        
+        // Se ok, será exibida a configuraçã da camera convencional 
+        if (convCam_01){
+            convCam_01->Init();
+            std::cout<< std::endl;
+            std::cout<< "*** Câmera convencional: ***"<< std::endl;
+            convCam_01->exibir_modelo_camera();
+            std::cout<< std::endl;
+            convCam_01->DeInit();
+        }
+    }    
+
+
+
     //********************************************************************************************/
     //*************************** Configuração da camera de eventos ******************************/
     //********************************************************************************************/
@@ -383,7 +403,7 @@ int main(int argc, char *argv[]) {
 
     std::mutex cd_frame_mutex;
     cv::Mat cd_frame;
-    std::atomic<bool> show_viewer{true}; 
+    std::atomic<bool> show_viewer{false}; 
     std::string window_name = "Visualizacao em Tempo Real";
 
     // Gerador de frames interno
@@ -412,6 +432,7 @@ int main(int argc, char *argv[]) {
     // Start camera de eventos:
     event_cam_01.start();
 
+
     // Dummy Trigger: "Acorda" o canal de trigger da Metavision
     gpiod_line_set_value(gpios_actives.triggerEventCam, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
@@ -428,7 +449,9 @@ int main(int argc, char *argv[]) {
 
     //********************************************************************************************  
     //****************************** Loop principal **********************************************
-    //********************************************************************************************/    
+    //********************************************************************************************/
+    // Flaque que inicializa o loop while:
+    bool running = true;     
     while(running) {
 
         int key = cv::waitKey(1);
@@ -448,10 +471,10 @@ int main(int argc, char *argv[]) {
 
 
         /// Exibe menu de escolha:
-        if (hab_exibe_menu){
+        if (parametros_gerais.hab_exibe_menu){
             //limparTela();
             showMenu(pin_TriggerEventCam, pin_PiscaLed, parametros_gerais.duracao_pulso_trigger);
-            hab_exibe_menu= false;
+            parametros_gerais.hab_exibe_menu= false;
         }
 
         // Máquina de estados do menu principal:
@@ -500,7 +523,20 @@ int main(int argc, char *argv[]) {
                             else
                                 desativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);                                             
                             break;                        
-                        }                      
+                        }  
+                        
+                case '5':
+                        {
+                            // Captura uma imagem pela câmera convencional:
+                            if (convCam_01){
+                                convCam_01->Init();
+                                convCam_01->capturarImagem();
+                                convCam_01->DeInit();
+                            }
+                            else
+                                std::cout << "Câmera convencional não instanciada." << std::endl;
+                            break;                        
+                        }        
                 
                 case '.':
                 case '>': // Incrementa o pwm que controla o tempo de atuação do Led, duração do blink do Led
@@ -514,7 +550,7 @@ int main(int argc, char *argv[]) {
 
                 case '+':
                 case '=': // Incrementa o pwm que controla a tensão analogica do Led (0 a 10V) ou laser (o a 5V):
-                        incrementaPWM(pwm_PowerLed, "Tensão do Led", "false");                                 
+                        incrementaPWM(pwm_PowerLed, "Tensão do Led", false);                                 
                         break;
 
                 case '-':
@@ -526,7 +562,7 @@ int main(int argc, char *argv[]) {
                 case 'L':
                         // Chama função para limpar o terminal: 
                         limparTela();
-                        hab_exibe_menu= true;
+                        parametros_gerais.hab_exibe_menu= true;
                         break;
 
                 case 'q':

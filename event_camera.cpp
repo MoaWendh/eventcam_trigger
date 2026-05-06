@@ -54,8 +54,10 @@ bool EventCamera::openEventCam(){
 void EventCamera::getParametrosGeraisEventCam(){
     // Captura dados da câmera instanciada:
     try {
-        parametrosGerais.fabricante = cam.get_camera_configuration().integrator;
         std::cout << std::endl;
+        std::cout << "*** Camera de eventos ***"  << std::endl; 
+        parametrosGerais.fabricante = cam.get_camera_configuration().integrator;
+
         std::cout << "Plugin versão: " << parametrosGerais.fabricante << std::endl; 
 
         parametrosGerais.plugin = cam.get_camera_configuration().plugin_name;

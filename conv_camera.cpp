@@ -1,96 +1,113 @@
 #include "conv_camera.h"
-#include "Spinnaker.h"
-#include <string>
+#include <iostream>
 
-
-// O construtor da classe camera_conv:
-ConvCamera::ConvCamera(std::string serial) 
-    : serialNumber(serial), inicializada(false) {
-
-    // Inicializa a camada de transporte e os recursos de sistema do SDK, vinculando a instância 
-    // única (Singleton) ao ponteiro inteligente "system" para o controle de hardware:        
-    system = Spinnaker::System::GetInstance();
+// Construtor: apenas inicializa membros que não existem na classe pai
+ConvCamera::ConvCamera() : Spinnaker::Camera() {
+    // Se você removeu a variável 'inicializada', não precisa de nada aqui.
+    // O estado da câmera agora é verificado via this->IsInitialized()
 }
 
 
-// Destruidor da classe camera_conv:
+// Destruidor: a limpeza do objeto Camera é feita automaticamente 
+// pelo gerenciamento de memória da SDK/SmartPointers.
 ConvCamera::~ConvCamera() {
-    close();
 }
 
-bool ConvCamera::open() {
-    try {
-        Spinnaker::CameraList camList = system->GetCameras();
-        
-        // Busca a câmera específica pelo Serial Number
-        pCam = camList.GetBySerial(serialNumber);
 
-        if (!pCam.IsValid()) {
-            std::cerr << "Câmera com Serial [" << serialNumber << "] não encontrada!" << std::endl;
-            camList.Clear();
-            return false;
-        }
-
-        // Estabelece a conexão real com o hardware
-        pCam->Init();
-        inicializada = true;
-
-        // Limpa a lista, mas pCam mantém a referência para a câmera aberta
-        camList.Clear();
-        return true;
-    }
-    catch (const Spinnaker::Exception& e) {
-        std::cerr << "Erro ao abrir câmera " << serialNumber << ": " << e.what() << std::endl;
-        return false;
-    }
-}
-
-void ConvCamera::close() {
-    try {
-        if (inicializada && pCam.IsValid()) {
-            pCam->DeInit();
-            pCam = nullptr; // Libera o ponteiro inteligente
-        }
-        
-        if (system.IsValid()) {
-            // Nota: Só chame ReleaseInstance se tiver certeza que 
-            // nenhuma outra instância de camera_conv está rodando.
-            // Para sistema estéreo, o ideal é gerenciar isso no main.
-            system->ReleaseInstance();
-        }
-        inicializada = false;
-    }
-    catch (const Spinnaker::Exception& e) {
-        std::cerr << "Erro ao fechar câmera: " << e.what() << std::endl;
-    }
-}
-
-void ConvCamera::exibir_configuracao() {
-    if (!inicializada) {
-        std::cout << "Câmera não inicializada." << std::endl;
+void ConvCamera::exibir_modelo_camera() {
+    // Substituímos sua variável local pelo método herdado IsInitialized()
+    if (!this->IsInitialized()) {
+        std::cout << "Câmera não inicializada. Chame Init() primeiro." << std::endl;
         return;
     }
 
-    Spinnaker::GenApi::INodeMap& nodeMap = pCam->GetNodeMap();
+    // Acessamos o NodeMap diretamente através do método herdado
+    auto& nodeMap = this->GetNodeMap();
     
-    // Exemplo de leitura de um nó (Modelo)
     Spinnaker::GenApi::CStringPtr ptrModel = nodeMap.GetNode("DeviceModelName");
     if (Spinnaker::GenApi::IsAvailable(ptrModel)) {
-        std::cout << "Câmera: " << ptrModel->GetValue() << " [Serial: " << serialNumber << "]" << std::endl;
+        // DeviceSerialNumber() também é herdado da Spinnaker::Camera
+        std::cout << "Câmera: " << ptrModel->GetValue() 
+                  << " [Serial: " << this->DeviceSerialNumber() << "]" << std::endl;
     }
 }
 
+
+// Getters simplificados usando os métodos da classe pai
 std::string ConvCamera::get_serial() const {
-    return serialNumber;
+    return this->DeviceSerialNumber().c_str();
 }
 
-bool ConvCamera::is_ok() const {
-    return inicializada;
+
+bool ConvCamera::is_ok() {
+    return this->IsInitialized();
 }
+
 
 Spinnaker::GenApi::INodeMap& ConvCamera::get_nodemap() {
-    if (!inicializada) {
-        throw std::runtime_error("Tentativa de acessar NodeMap de câmera não inicializada!");
+    if (!this->IsInitialized()) {
+        throw std::runtime_error("A câmera precisa estar inicializada (Init) para acessar o NodeMap!");
     }
-    return pCam->GetNodeMap();
+    return this->GetNodeMap();
+}
+
+
+
+// Implementação do Init que o Linker não estava achando
+void ConvCamera::Init() {
+    // Chama a implementação original da SDK da FLIR
+    Spinnaker::Camera::Init(); 
+    
+    // Agora atualiza o seu estado interno
+    this->inicializada = true;
+}
+
+
+
+// Implementação do DeInit que o Linker não estava achando
+void ConvCamera::DeInit() {
+    // Chama a implementação original da SDK da FLIR
+    Spinnaker::Camera::DeInit();
+    
+    // Atualiza o seu estado interno
+    this->inicializada = false;
+}
+
+
+
+Spinnaker::ImagePtr ConvCamera::capturarImagem() {
+    try {
+        if (!this->is_ok()) return nullptr;
+
+        // 1. Inicia o fluxo de dados do sensor para a memória
+        this->BeginAcquisition();
+
+        // 2. Captura o próximo frame disponível (timeout de 1000ms)
+        Spinnaker::ImagePtr pImage = this->GetNextImage(1000);
+
+        if (pImage->IsIncomplete()) {
+            std::cerr << "Imagem incompleta!" << std::endl;
+            pImage->Release(); // Importante liberar antes de retornar
+            this->EndAcquisition();
+            return nullptr;
+        }
+        
+        // 1. Criar uma instância do processador de imagem
+        Spinnaker::ImageProcessor processor;
+
+               
+        // 3. Converter a imagem usando o processador
+        // Note: convert() retorna um novo ImagePtr
+        Spinnaker::ImagePtr convertedImage = processor.Convert(pImage, Spinnaker::PixelFormat_Mono8);             
+
+
+        // 4. PARA o fluxo (Crucial para não sobrecarregar o barramento USB)
+        this->EndAcquisition();
+
+        return convertedImage;
+    }
+    catch (const Spinnaker::Exception& e) {
+        std::cerr << "Erro na captura: " << e.what() << std::endl;
+        return nullptr;
+    }
 }
