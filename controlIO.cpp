@@ -71,7 +71,7 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
         gpiod_line_set_value(lines_out.triggerEventCam, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
         // Usa o mapeamento físico privado da classe para o log:
-        std::cout << "Jetson: trigger EvCam no pino: " << pinos.header_pin_IO_G << " (Nivel= 0V)"<< std::endl;
+        std::cout << "Jetson: trigger EvCam ................. pino: " << pinos.header_pin_IO_G << "  (Nivel= 0V)"<< std::endl;
     } 
     else {
         perror("[ERRO de request] Não foi possível configurar como OUTPUT o pino do trigger da camera de eventos.");
@@ -83,7 +83,7 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
         // Garantir que o pino do IO da Jetson inicie em nivel baixo:
         gpiod_line_set_value(lines_out.piscaLed, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::cout << "Jetson: Pisca Led no pino: " << pinos.header_pin_IO_I << " (Nivel= 0V)" << std::endl;
+        std::cout << "Jetson: Pisca Led ..................... pino: " << pinos.header_pin_IO_I << " (Nivel= 0V)" << std::endl;
     } 
     else {
         perror("[ERRO de Request] Não foi possível configurar como OUTPUT o pino do LED.");
@@ -96,7 +96,7 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
         // Garantir que o pino do IO da Jetson inicie em nivel baixo:
         gpiod_line_set_value(lines_out.triggerNormalCam, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::cout << "Jetson: Trigger da camera convencional no pino: " << pinos.header_pin_IO_H << " (Nivel= 0V)"<< std::endl; 
+        std::cout << "Jetson: Trigger camera convencional ... pino: " << pinos.header_pin_IO_H << " (Nivel= 0V)"<< std::endl; 
     } 
     else {
         perror("[ERRO de Request] Não foi possível configurar como OUTPUT o pino de Trigger da camera convencional.");
@@ -109,7 +109,7 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
         // Garantir que o pino do IO da Jetson inicie em nivel baixo:
         gpiod_line_set_value(lines_out.controlMotor01, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::cout << "Jetson: Controle MOTOR Fase 1 no pino: " << pinos.header_pin_IO_A << " (Nivel= 0V)"<< std::endl; 
+        std::cout << "Jetson: Controle MOTOR Fase 1 ......... pino: " << pinos.header_pin_IO_A << " (Nivel= 0V)"<< std::endl; 
     } 
     else {
         perror("[ERRO de Request] Não foi possível configurar como OUTPUT o pino de controle da Fase 01 do MOTOR.");
@@ -122,7 +122,7 @@ GPIO_Lines configJetson::configura_GPIO_Jetson(struct gpiod_chip **chip_ptr) {
         // Garantir que o pino do IO da Jetson inicie em nivel baixo:
         gpiod_line_set_value(lines_out.controlMotor02, 0);
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        std::cout << "Jetson: Controle MOTOR Fase 2 no pino: " << pinos.header_pin_IO_B << " (Nivel= 0V)"<< std::endl; 
+        std::cout << "Jetson: Controle MOTOR Fase 2 ......... pino: " << pinos.header_pin_IO_B << " (Nivel= 0V)"<< std::endl; 
         std::cout << std::endl;
     } 
     else {

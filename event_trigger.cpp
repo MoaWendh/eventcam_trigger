@@ -21,7 +21,7 @@
 #include "parametros.h"
 
 
-// Funação que gera o menu de opções:
+// Função que exibe o menu de opções:
 void showMenu(int pinTrigger, int pinLed, int64_t duracao){     
     std::cout << ""<< std::endl;
     std::cout << "******************** Menu  ********************"<< std::endl;
@@ -232,21 +232,34 @@ void configuraPWM(PWM &pwm, const std::string &path, long periodo, long duty_cic
 
     // Ajusta o período do pwm A:
     if (pwm.setPeriodo(periodo))
-        std::cout << "Periodo PWM "<< canal.c_str() << "= "<< periodo << std::endl;
+        std::cout << "Periodo PWM..........."<< canal.c_str() << "= "<< periodo << std::endl;
     else
-        std::cout << "[Erro] Não foi possível ajustar periodo pwm A." << std::endl;     
+        std::cout << "[Erro] Não foi possível ajustar periodo canal:" << canal.c_str() << std::endl;     
     usleep(100000);
 
     // Define o dutyciclo conforme o valor da variável:
     if (pwm.setDutyCycle(duty_cicle))
-        std::cout << "Duty-Cicle PWM " << canal.c_str() << "= "<< duty_cicle << std::endl;
+        std::cout << "Duty-Cicle PWM........" << canal.c_str() << "= "<< duty_cicle << std::endl;
     else
-        std::cout << "[Erro] Não foi possível ajustar o duty-cicle do pwm A." << std::endl;                
+        std::cout << "[Erro] Não foi possível ajustar o duty-cicle do pwm canal:" << canal.c_str() << std::endl;                
     usleep(100000);
 
     //if (enable)
       //  pwm.enable();
 
+}
+
+
+// Verificação se os pinos forma configurados ok, por segurança:
+int confirma_gpios_actives(GPIO_Lines &gpios_actives, gpiod_chip *chip){
+    if (gpios_actives.triggerEventCam == nullptr || gpios_actives.piscaLed == nullptr || gpios_actives.triggerNormalCam == nullptr || 
+        gpios_actives.controlMotor01 == nullptr  || gpios_actives.controlMotor02 == nullptr ) {
+            std::cerr << "[ERRO] Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
+        if (chip)
+            gpiod_chip_close(chip);
+        return 0;
+    }
+    return 1;
 }
 
 
@@ -278,22 +291,14 @@ int main(int argc, char *argv[]) {
     int pin_TriggerCam= activePins.header_pin_IO_H;
     //int pin_ControlLaser= activePins.header_pinH;
 
-
     // Chama o método de configuração "configuraGPIO_Jetson.configura_GPIO_Jetson(&chip)" para inicialização do barramento GPIO da Jetson.
     // Ela retorna uma struct contendo ponteiros com os endereços de cada linha do GPIO da Jetson para controle pelo Kernell.
     // Através desses endereços que os pinos de IO são diretamente manipulados, por exemplo, mudanças de nivel lógico.
     GPIO_Lines gpios_actives= configuraGPIO_Jetson.configura_GPIO_Jetson(&chip);
 
-
-    // Verificação se os pinos forma configurados ok, por segurança:
-    if (gpios_actives.triggerEventCam == nullptr || gpios_actives.piscaLed == nullptr || gpios_actives.triggerNormalCam == nullptr || 
-        gpios_actives.controlMotor01 == nullptr || gpios_actives.controlMotor02 == nullptr ) {
-            std::cerr << "[ERRO] Falha crítica na inicialização dos GPIOs. Abortando!!!!" << std::endl;
-
-        if (chip) 
-            gpiod_chip_close(chip);
-        return 1;
-    }
+    // Por segurança, verifica se as linhas "gpios_actives" foram ativadas, configuradas ok, caso contrario o programa é abortado para evitar falhas de hardware:
+    if (!confirma_gpios_actives(gpios_actives, chip))
+        return 1; 
 
 
     // ***********************************************************************************************/
@@ -318,7 +323,6 @@ int main(int argc, char *argv[]) {
     configuraPWM(pwm_PowerLed, parametros_gerais.channelToExport_B, parametros_gerais.periodo_PWM_B, parametros_gerais.dutyCicle_PWM_B, "Canal B", true);
 
    
-
 
     //********************************************************************************************/
     //********** Configuração da camera convencional FLIR (Model BlackFly BFS-U3-04S2M) **********/
@@ -372,14 +376,8 @@ int main(int argc, char *argv[]) {
     //********************************************************************************************/
 
     // Instancia o objeto event_cam_xx para operar com a camera de eventos:
+    // Esta "Classe EventCamera" foi criada para tratar dos objeos, atributops e métodos do SDK Metavision: 
     EventCamera event_cam_01(parametros_gerais.serialNumber_event_cam3);
-   
-    // Booleano que define se a câmera usada é HD ou VGA:    
-    bool sensorHD= false;    
-
-    // 1- Instancia um objeto "camera" da classe "Metavision::camera":
-    //Metavision::Camera camera_01;
-
 
     // Chama função para inicializar a camera de eventos:
     if (!event_cam_01.openEventCam()){
@@ -394,6 +392,9 @@ int main(int argc, char *argv[]) {
     if (!event_cam_01.setBias())
         std::cout << "ERRO!! Biases não gravado na câmera." << std::endl;
     
+
+    // Instancia o objeto cd_frame_generator da classe Metavision::CDFrameGenerator, que é um gerador de frames interno da SDK da Metavision.
+    // Ele acumula os eventos CD e gera frames para visualização em tempo real.    
     Metavision::CDFrameGenerator cd_frame_generator(event_cam_01.getWidth(), event_cam_01.getHeight());
 
     
@@ -403,7 +404,7 @@ int main(int argc, char *argv[]) {
 
     std::mutex cd_frame_mutex;
     cv::Mat cd_frame;
-    std::atomic<bool> show_viewer{false}; 
+    std::atomic<bool> show_viewer{true}; 
     std::string window_name = "Visualizacao em Tempo Real";
 
     // Gerador de frames interno
@@ -422,36 +423,30 @@ int main(int argc, char *argv[]) {
         }
     });
 
-
     // Habilita Trigger via HAL API
-    if(event_cam_01.enableHardwareTrigger()){
-          std::cout << std::endl;
-        std::cout << "Trigger habilitado para ambas as bordas, Risinge e Falling edge." << std::endl;      
-    }
+    event_cam_01.enableHardwareTrigger();
 
     // Start camera de eventos:
     event_cam_01.start();
 
 
-    // Dummy Trigger: "Acorda" o canal de trigger da Metavision
+    // Sequencia Dummy Trigger para "acorda" o canal de trigger da Metavision:
     gpiod_line_set_value(gpios_actives.triggerEventCam, 1);
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
     gpiod_line_set_value(gpios_actives.triggerEventCam, 0);
-
-    // Aguarda o sistema processar esse evento interno antes de liberar o menu
     std::this_thread::sleep_for(std::chrono::milliseconds(500));
-
-
-    std::cout << "Camera inicializada" << std::endl;
 
     // Instancia o objeto da classe LighCotroller: 
     LightController ledLight;
 
+
     //********************************************************************************************  
     //****************************** Loop principal **********************************************
     //********************************************************************************************/
-    // Flaque que inicializa o loop while:
-    bool running = true;     
+    // Flag que habilita a execução do loop while:
+    bool running = true; 
+    
+    // Loop principal:    
     while(running) {
 
         int key = cv::waitKey(1);
@@ -465,9 +460,9 @@ int main(int argc, char *argv[]) {
            // cv::waitKey(1); 
         }    
         else {
-                // Cria uma imagem preta pequena apenas para manter o foco do teclado
-                cv::imshow(window_name, cv::Mat::zeros(100, 300, CV_8UC1));
-            }            
+            // Cria uma imagem preta pequena apenas para manter o foco do teclado
+            cv::imshow(window_name, cv::Mat::zeros(100, 300, CV_8UC1));
+        }            
 
 
         /// Exibe menu de escolha:
@@ -497,7 +492,10 @@ int main(int argc, char *argv[]) {
                         {
                             std::cout << "\nTrigger Com duração de: "<< parametros_gerais.duracao_pulso_trigger << "us" << std::endl;
 
-                            // Neste caso é melhor ativar uma thread usando uma função lambda, pois são passadas mais de uma função para ela:
+                            // Usa-se uma thread com função lambda, onde:
+                            // [&] = Captura: ela captura todas as variáveis e métodos, por referencia, no escopo de main(), pois ela utilzia várias funções e variáveis;
+                            // () = Parâmetros: Sem nenhum parâmetro como argumento;
+                            // {} = Corpo: onde são chamadas as funções.:
                             std::thread t([&]() { 
                                 for (int ctCiclo=0;  ctCiclo < parametros_gerais.numero_ciclos_trigger; ctCiclo++){                           
                                     // Primeira ativa a projeção da luz estruturada:
@@ -511,8 +509,6 @@ int main(int argc, char *argv[]) {
 
                             // Desacoplar a thread para que o viewer não trave
                             t.detach();
-
-
                             break;
                         } 
 
@@ -568,7 +564,7 @@ int main(int argc, char *argv[]) {
                 case 'q':
                 case 'Q':
                         running = false;
-                        std::cout << "Saindo do programa...." << std::endl;
+                        std::cout <<std::endl;
                         break;
 
                 default:
@@ -578,7 +574,6 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // *********** Finalização e limpeza:
     // Fecha a câmera:  
     event_cam_01.stop();
 

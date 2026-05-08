@@ -31,20 +31,20 @@ private:
 
     // Inicializa as linhas do GPIO da Jetson relativas aso pinos do barramento conector J12:
     struct LineJetson {
-        const int line_PWM_A = 43;  // PH.00  - Pino 33 (Controle PWM laser)
-        const int line_PWM_B =41;   // PG.06  - Pino 32 (Controle strobo Led)
+        const int line_PWM_A = 43;   // PH.00  - Pino 33 (Controle PWM laser)
+        const int line_PWM_B = 41;   // PG.06  - Pino 32 (Controle strobo Led)
 
-        const int line_IO_A = 112;  // PR.04  - Pino 11 (Controle Motor_01)
-        const int line_IO_B = 122;  // PY.00  - Pino 13 (Controle Motor_02)
+        const int line_IO_A  = 112;  // PR.04  - Pino 11 (Controle Motor_01)
+        const int line_IO_B  = 122;  // PY.00  - Pino 13 (Controle Motor_02)
 
-        const int line_IO_C = 53;   // PI.02  - Pino  (Encoder_01)
-        const int line_IO_D = 113;  // PR.05  - Pino  (Encoder_02)  
-        const int line_IO_E = 124;  // PY.02  - Pino  (Encoder_03)
-        const int line_IO_F = 52;   // PI.01  - Pino  (Encoder_04)
+        const int line_IO_C  = 53;   // PI.02  - Pino  (Encoder_01)
+        const int line_IO_D  = 113;  // PR.05  - Pino  (Encoder_02)  
+        const int line_IO_E  = 124;  // PY.02  - Pino  (Encoder_03)
+        const int line_IO_F  = 52;   // PI.01  - Pino  (Encoder_04)
 
-        const int line_IO_G = 144;  // PAC.06 - Pino 7  (Trigger camera de eventos)
-        const int line_IO_H = 106;  // PQ.06  - Pino 31 (Trigger camera convencional)
-        const int line_IO_I = 51;   // PI.00  - Pino 40 (Pisca Led)  
+        const int line_IO_G  = 144;  // PAC.06 - Pino 7  (Trigger camera de eventos)
+        const int line_IO_H  = 106;  // PQ.06  - Pino 31 (Trigger camera convencional)
+        const int line_IO_I  = 51;   // PI.00  - Pino 40 (Pisca Led)  
     };
 
 
@@ -53,17 +53,17 @@ private:
         const int header_pin_PWM_A = 33; // Controle laser (Também PWM)
         const int header_pin_PWM_B = 32; // Controle strobo Led (Também PWM)
 
-        const int header_pin_IO_A = 11; // Controle Motor_01 
-        const int header_pin_IO_B = 13; // Controle Motor_02   
+        const int header_pin_IO_A  = 11; // Controle Motor_01 
+        const int header_pin_IO_B  = 13; // Controle Motor_02   
 
-        const int header_pin_IO_C = 35; // Controle Encoder_01
-        const int header_pin_IO_D = 36; // Controle Encoder_02   
-        const int header_pin_IO_E = 37; // Controle Encoder_03
-        const int header_pin_IO_F = 38; // Controle Encoder_04    
+        const int header_pin_IO_C  = 35; // Controle Encoder_01
+        const int header_pin_IO_D  = 36; // Controle Encoder_02   
+        const int header_pin_IO_E  = 37; // Controle Encoder_03
+        const int header_pin_IO_F  = 38; // Controle Encoder_04    
 
-        const int header_pin_IO_G = 7;  // Trigger camera de eventos   
-        const int header_pin_IO_H = 31; // Trigger camera convencional
-        const int header_pin_IO_I = 40; // Pisca Led 
+        const int header_pin_IO_G  = 7;  // Trigger camera de eventos   
+        const int header_pin_IO_H  = 31; // Trigger camera convencional
+        const int header_pin_IO_I  = 40; // Pisca Led 
     };
 
     LineJetson lines;

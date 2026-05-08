@@ -17,10 +17,17 @@ EventCamera::EventCamera(std::string serial)
     : serialNumber(serial), inicializada(false) {
 }
 
-
+// Esta função tenta abrir a câmera de eventos usando o serial number fornecido no construtor. 
+// Se falhar, ela tenta listar todas as câmeras conectadas para ajudar na depuração. 
 bool EventCamera::openEventCam(){
     try {
+            // Forma alternativa de abrir a câmera, sem usar o serial number, mas ela pode abrir a câmera errada se houver mais de uma conectada:
             //camera = Metavision::Camera::from_first_available();
+
+            // Se a câmera for encontrada e aberta com sucesso, o objeto cam é inicializado com a câmera correspondente ao serial number fornecido.
+            // Isto singifica que após gerar o objeto cam, a câmera de eventos já está aberta e pronta para uso.
+            // Estabeleceu um canal de comunicação: agora o objeto cam é a interface para interagir com a câmera, ler eventos, configurar parâmetros, etc.
+            // Hardware incializado: agora é possível acessar as funcionalidades do device câmera através do objeto cam.
             cam = Metavision::Camera::from_serial(serialNumber);
             return true;
         } 
@@ -54,23 +61,22 @@ bool EventCamera::openEventCam(){
 void EventCamera::getParametrosGeraisEventCam(){
     // Captura dados da câmera instanciada:
     try {
-        std::cout << std::endl;
         std::cout << "*** Camera de eventos ***"  << std::endl; 
         parametrosGerais.fabricante = cam.get_camera_configuration().integrator;
 
-        std::cout << "Plugin versão: " << parametrosGerais.fabricante << std::endl; 
+        std::cout << "Plugin versão........: " << parametrosGerais.fabricante << std::endl; 
 
         parametrosGerais.plugin = cam.get_camera_configuration().plugin_name;
-        std::cout << "Plugin versão: " << parametrosGerais.plugin << std::endl; 
+        std::cout << "Plugin versão........: " << parametrosGerais.plugin << std::endl; 
 
         parametrosGerais.serial_cam = cam.get_camera_configuration().serial_number;
-        std::cout << "Nº Serial cam: " << parametrosGerais.serial_cam << std::endl;
+        std::cout << "Nº Serial cam........: " << parametrosGerais.serial_cam << std::endl;
 
         parametrosGerais.versionFirm = cam.get_camera_configuration().firmware_version;
-        std::cout << "Versão do firmware: " << parametrosGerais.versionFirm << std::endl;
+        std::cout << "Versão do firmware...: " << parametrosGerais.versionFirm << std::endl;
 
         parametrosGerais.dataEncodeFormat = cam.get_camera_configuration().data_encoding_format;
-        std::cout << "Formato dos dados: " << parametrosGerais.dataEncodeFormat << std::endl;
+        std::cout << "Formato dos dados....: " << parametrosGerais.dataEncodeFormat << std::endl;
         std::cout << std::endl;
     } 
     catch (...) {
@@ -204,7 +210,7 @@ bool EventCamera::setBias() {
         i_ll_biases->set("bias_hpf", bias_hpf);
         i_ll_biases->set("bias_refr", bias_refr);
 
-        std::cout << "[OK] Biases atualizados na câmera com dados do arquivo: \""<< fileName.c_str() << "\"" << std::endl;
+        std::cout << "Biases atualizados com dados do arquivo \""<< fileName.c_str() << "\"" << " ...câmera: " << serialNumber << std::endl;
         return true;
 
     } catch (const std::exception &e) {
@@ -219,35 +225,31 @@ bool EventCamera::setBias() {
 
 
 // Este método configura a camera de eventos para gerar trigger por hardware:
-bool EventCamera::enableHardwareTrigger() {
+void EventCamera::enableHardwareTrigger() {
     try {
         // O método get_device() retorna o dispositivo atual
-        // O facility retorna um ponteiro, por isso o uso do auto*
+        // O facility retorna um ponteiro para a interface de TriggerIn, que é a responsável por configurar o sincronismo de hardware e gerar trigger por hardware:
         auto *i_trigger_in = cam.get_device().get_facility<Metavision::I_TriggerIn>();
 
         if (i_trigger_in) {
             // Habilita o canal principal (Main) para bordas de subida e descida
-            i_trigger_in->enable(Metavision::I_TriggerIn::Channel::Main);
-            
-            std::cout << "[SUCCESS] Trigger habilitado (Sensor: " << serialNumber << ")" << std::endl;
-            return true;
-        } else {
-            std::cerr << "[ERRO] Interface de Trigger nao suportada pelo hardware." << std::endl;
-            return false;
-        }
-    } catch (const std::exception &e) {
-        std::cerr << "[EXCECAO Trigger]: " << e.what() << std::endl;
-        return false;
+            i_trigger_in->enable(Metavision::I_TriggerIn::Channel::Main);           
+            std::cout << "Trigger habilitado - bordas subida e descida ..............câmera: " << serialNumber << std::endl;
+        } 
+        else 
+            std::cerr << "[Erro] Não foi possível acessar a interface de TriggerIn do hardware!" << std::endl;
     }
+    catch (const std::exception &e) {
+        std::cerr << "[EXCECAO Trigger]: " << e.what() << std::endl;
+    }    
 }
 
 
 bool EventCamera::start() {
     try {
         // Inicia a câmera interna da classe
-        cam.start();
-        
-        std::cout << "[OK] Captura iniciada para a camera: " << serialNumber << std::endl;
+        cam.start();      
+        std::cout << "Captura de eventos iniciada................................câmera: " <<  serialNumber << std::endl;
         return true;
     } catch (const std::exception &e) {
         std::cerr << "[ERRO] Falha ao iniciar a camera " << serialNumber 
@@ -256,10 +258,11 @@ bool EventCamera::start() {
     }
 }
 
+
 void EventCamera::stop() {
     try {
         cam.stop();
-        std::cout << "[INFO] Captura parada: " << serialNumber << std::endl;
+        std::cout << "Captura e eventos finalizada...câmera: " << serialNumber << std::endl;
     } catch (...) {
         // Ignora erros ao parar para garantir que o programa feche
     }

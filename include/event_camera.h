@@ -90,7 +90,7 @@ public:
     }
 
     // Método para configurar o sincronismo de hardware, e gerar trigger por hardware:
-    bool enableHardwareTrigger();
+    void enableHardwareTrigger();
 
     // Método para iniciar a captura de eventos no hardware
     bool start();

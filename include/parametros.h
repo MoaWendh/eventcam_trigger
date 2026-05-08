@@ -13,7 +13,12 @@ struct PARAMETROS_GERAIS {
 
     // Núemros de séries das cameras convencionais
     const std::string serialNumber_conv_cam_01= "25083333";
-    const std::string serialNumber_conv_cam_02= "00000414";  
+    const std::string serialNumber_conv_cam_02= "00000414"; 
+
+    // Números de série das câmeras de eventos:
+    const std::string serialNumber_event_cam0= "00000414"; // HD
+    const std::string serialNumber_event_cam2= "00000679"; // VGA
+    const std::string serialNumber_event_cam3= "00000680"; // VGA     
     
     // Definição dos paths referentes aos chips de IO da Jeson que geram o PWM: 
     const std::string channelToExport_A= "/sys/class/pwm/pwmchip3/";  
@@ -24,14 +29,9 @@ struct PARAMETROS_GERAIS {
     long dutyCicle_PWM_B= 10;  // PWM referente ao controle da tensão.
 
     // Definição do periodo dos PWMs, valor em nano segundos.
-    long periodo_PWM_A= 100000000;  //  A: referente ao blink do led (pino 32 da Jetson). 
+    long periodo_PWM_A= 100000000;  // A: referente ao blink do led (pino 32 da Jetson). 
     long periodo_PWM_B= 1000000;    // B: referente a tensão do led (pino 33 da Jetson).     
-    
-    // Números de série das câmeras de eventos:
-    const std::string serialNumber_event_cam0= "00000414"; // HD
-    const std::string serialNumber_event_cam2= "00000679"; // VGA
-    const std::string serialNumber_event_cam3= "00000680"; // VGA 
-    
+     
     // Define se está usando o led de potencia LT2PR da Opto Engineering
     bool useLed_LT2PR= true;
 

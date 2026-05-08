@@ -28,7 +28,7 @@ void ConvCamera::exibir_modelo_camera() {
     if (Spinnaker::GenApi::IsAvailable(ptrModel)) {
         // DeviceSerialNumber() também é herdado da Spinnaker::Camera
         std::cout << "Câmera: " << ptrModel->GetValue() 
-                  << " [Serial: " << this->DeviceSerialNumber() << "]" << std::endl;
+                  << " ..... Nº Serial: " << this->DeviceSerialNumber() << std::endl;
     }
 }
 
@@ -104,8 +104,15 @@ Spinnaker::ImagePtr ConvCamera::capturarImagem() {
         // 4. PARA o fluxo (Crucial para não sobrecarregar o barramento USB)
         this->EndAcquisition();
 
+        if (convertedImage != nullptr) {
+            std::cout << "Imagem capturada com sucesso - Resolução: " << convertedImage->GetWidth() 
+                    << "x" << convertedImage->GetHeight() 
+                    << " | Formato: " << convertedImage->GetPixelFormatName() << std::endl;
+        }       
+
         return convertedImage;
     }
+
     catch (const Spinnaker::Exception& e) {
         std::cerr << "Erro na captura: " << e.what() << std::endl;
         return nullptr;
