@@ -183,3 +183,91 @@ void configJetson::liberaGPIO_Jetson(struct gpiod_chip *chip, GPIO_Lines gpios){
     }
 }
 
+// Construtor da classe PWM, com as devidas inicializações das variáveis menbros privadas:
+PWM::PWM(int64_t periodo_ns, int64_t dutyCycle_perc, std::string path, std::string n_canal) 
+        : period(periodo_ns), 
+          dutyCycle(dutyCycle_perc),
+          fullPath_chip(path),           
+          active(false), 
+          canal("pwm0/"), 
+          nome(n_canal) 
+          {
+                this->inicializa_canal();
+                usleep(100000);
+                this->setPeriodo(period);
+                usleep(100000);
+                this->setDutyCycle(dutyCycle);
+                usleep(100000);
+          }
+
+// Estrutor PWM:
+PWM::~PWM() {
+        disable();
+        std::cout << "PWM " << canal.c_str() << " desabilitado e classe encerrada." << std::endl; 
+    } 
+
+
+// Método que inicializa o canal pwm:
+void PWM::inicializa_canal() {
+    // Exporta o canal:
+    // Primeiro verifica se a pasta pwm0 existe se sim o canal já foi exportado.
+    // A pasta pwm0 é criada com o export, se ela já existe não tem porque recriá-la, basta recofnigurar o pwm 
+    if (!std::filesystem::exists(fullPath_chip + canal)){
+        // Se não existe exporta:
+        std::ofstream export_file(fullPath_chip + "export");
+        export_file << "0"; 
+        export_file.close(); 
+    }
+} 
+    
+
+// Ajusta o period do PWM:
+bool PWM::setPeriodo(int64_t periodo_ns){
+    // Atualiza  variável que guarda o periodo:
+    bool set_ok= false;
+    period= periodo_ns;
+
+    // Configura o periodo:
+    if (writeToFile("period", std::to_string(period))){
+        std::cout << "Periodo PWM.............."<< this->nome << "= "<< period/1000000 << "ms ("<<1000000000/period << " Hz)" << std::endl;
+        set_ok= true;
+    }
+    else
+        std::cout << "[Erro] Não foi possível ajustar periodo canal:" << this->nome << std::endl;
+    return set_ok;
+}
+
+
+// AJusta o Duty-Cycle do PWM:
+bool PWM::setDutyCycle(int64_t dutyCycle_percentual) {
+    dutyCycle= dutyCycle_percentual;
+    bool set_ok= false;
+    
+    // Configura o duty_cycle
+    int64_t dutyCycle_ns= (dutyCycle*period)/100;
+    if (writeToFile("duty_cycle", std::to_string(dutyCycle_ns))){
+        std::cout << "Duty-Cycle PWM..........."<< this->nome << "= "<< dutyCycle << "% ("<< dutyCycle_ns << "ns)." << std::endl;
+        set_ok= true; 
+    }
+    else  
+        std::cout << "[Erro] Não foi possível ajustar o duty-cycle do pwm canal:" << this->nome << std::endl;       
+    return set_ok;            
+}
+
+
+// Habilita o PWM:
+bool PWM::enable() { 
+    if (writeToFile("enable", "1"))
+        active= true;
+    return active;   
+}
+
+
+// Desabilita o PWM:
+bool PWM::disable() { 
+    if (writeToFile("enable", "0"))
+        active= false;
+    return active;
+}
+
+

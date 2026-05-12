@@ -1,12 +1,15 @@
-#ifndef CAMERA_DE_EVENTOS
-#define CAMERA_DE_EVENTOS
+#ifndef EVENT_CAMERA_H
+#define EVENT_CAMERA_H
 
 #include <string>
 #include <iostream>
 
-#include <metavision/sdk/stream/camera.h>
 #include <metavision/hal/facilities/i_trigger_in.h>
+#include <metavision/sdk/stream/camera.h>
+#include <metavision/hal/device/device_discovery.h>
+#include <metavision/hal/facilities/i_camera_synchronization.h>
 
+#include "parametros.h"
 
 struct paramsEventCam
 {
@@ -18,22 +21,35 @@ struct paramsEventCam
 };
 
 
-class EventCamera {
-private:
-    std::string serialNumber;
-    // Variáveis que guardam os parametros gerais da camera:
+// Esta classe EventCamera herda os métodos e atributos públicos da classe Metavision::Camera, que é a classe principal do SDK da Metavision para interagir com as câmeras de eventos.
+// VAntagens de trabalhar com um classe proprietária é que além dela herdar os métodos da classe Metavision::Camera, ela pode ter seus próprios métodos e atributos personalizados 
+// para facilitar a integração com o restante do código, como por exemplo, métodos para ler e configurar os biases, métodos para iniciar e parar a gravação, etc. 
+class EventCamera : public Metavision::Camera { 
 
-    // O objeto real da SDK agora mora aqui dentro
-    Metavision::Camera cam;
+private:
+    // Numero de serie da camera:
+    std::string serialNumber;
+
+    // Nome referencia da camera:
+    std::string nome;
+
+    // Flag que indica se a camera é master ou slave:
+    // * Master: a câmera gera o clock de sincronismo de tempo.
+    // * Slave: A câmera recebe o clock de sincronismo de tempo.
+    bool isMaster;
 
     // Ponteiro para a interface de Trigger de hardware
     Metavision::I_TriggerIn* trigger_in = nullptr;
+
+   //  std::unique_ptr<Metavision::Camera> cam;
 
     // Variavel tipo struct que guarda os paramerto gerais da camera
     paramsEventCam parametrosGerais;
 
     // Apenas guarda o estado aual da camera instanciada:
     bool inicializada;
+
+    bool is_running;
 
     // Patha para leitura do json:
     std::string fileName= "settings.json";
@@ -44,39 +60,34 @@ private:
     int width = 0;
     int height = 0;
 
+    std::string verificaModoDeSincronismo(Metavision::I_CameraSynchronization *i_cam_sync);
+
 public:
     // Construtor que recebe o Serial Number:
-    EventCamera(std::string serial);
+    EventCamera(std::string serial, std::string nm, bool master=false);
     ~EventCamera(){};
 
-    // 
+    // Le da camera de eventos todos os valores dos biases:
     void readCameraBiases();
-
-    // Inicializa a camera de eventos:
-    bool openEventCam();
 
     // Método para leitura dos parêmtros gerias da camera de eventos:
     void getParametrosGeraisEventCam();
+
+    void callStart();
 
     // APenas para pegar o nº de serie:
     std::string getSerial(); 
 
     // Método que efetua a leitura dos biases e armazena em vairável:
-    bool setBias();
+    bool setBias(PARAMETROS_GERAIS &params);
 
-    // Método que efetua a leitura das dimensões do sensor da camera de eventos, largura:
-    int getWidth() { 
-        auto &geo = cam.geometry(); 
-        this->width = geo.get_width();        
+    int getWidth() const { 
         return width; 
-    };
-    
-    // Método que efetua a leitura das dimensões do sensor da camera de eventos, altura:
-    int getHeight() { 
-        auto &geo = cam.geometry(); 
-        this->height = geo.get_height();
-        return height;
-    };
+    }
+
+    int getHeight() const { 
+        return height; 
+    }
 
     // Método que inicia a gravação, captura, dos eventos por trigger:
     bool startRecording(const std::string& fullPath);
@@ -86,17 +97,14 @@ public:
 
     // 
     void setCDCallback(std::function<void(const Metavision::EventCD*, const Metavision::EventCD*)> cb) {
-        cam.cd().add_callback(cb);
+        this->cd().add_callback(cb);
     }
 
     // Método para configurar o sincronismo de hardware, e gerar trigger por hardware:
     void enableHardwareTrigger();
 
-    // Método para iniciar a captura de eventos no hardware
-    bool start();
-
-    // Método para parar a captura de eventos no hardware
-    void stop();
+    // Métod que configura o sincronismo de tempo entre duas cameras de eventos:
+    void configSincronismo();
 };
 
 #endif

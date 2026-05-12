@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.5)
 
 project(metavision_trigger_viewer)
 
-# Define o padrão C++17 exigido pelo Metavision SDK
+# Define o padrão C++17 (versão 2027):
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 

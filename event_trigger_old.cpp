@@ -74,20 +74,13 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
         struct tm *info = std::localtime(&tempo_t);
 
         // gera o nome do diretório:
-        //std::stringstream nome_pasta_aux;
-        //nome_pasta_aux << "data_evecam_" << std::put_time(info, "%d_%m_%Y");
-        //std::string nome_pasta_01 = nome_pasta_aux.str();
-        std::stringstream Path_01; 
-        Path_01<< "data_evecam_" << std::put_time(info, "%d_%m_%Y") << "/L";
-        std::stringstream Path_02;
-        Path_02<< "data_evecam_" << std::put_time(info, "%d_%m_%Y") << "/R";
+        std::stringstream ss_pasta;
+        ss_pasta << "data_evecam_" << std::put_time(info, "%d_%m_%Y");
+        std::string nome_pasta = ss_pasta.str();
 
         // Criar a pasta se ela não existir
-        if (!std::filesystem::exists(Path_01.str())) {
-            std::filesystem::create_directories(Path_01.str());
-        }
-        if (!std::filesystem::exists(Path_02.str())) {
-            std::filesystem::create_directories(Path_02.str());
+        if (!std::filesystem::exists(nome_pasta)) {
+            std::filesystem::create_directory(nome_pasta);
         }
 
         // Gera o nome do arquivo de dados .raw:
@@ -98,8 +91,10 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
         std::string time= ss_time.str();
         std::string filename_01= "evecam_sn_" + serialNumber_01 + "_" + time + ".raw";
         std::string filename_02= "evecam_sn_" + serialNumber_02 + "_" + time + ".raw";
-        std::string full_path_01 = Path_01.str()  + "/" + filename_01;
-        std::string full_path_02 = Path_02.str()  + "/" + filename_02;
+        //std::string full_path_01 = nome_pasta + "/01/" + filename_01;
+        //std::string full_path_02 = nome_pasta + "/02/" + filename_02;
+        std::string full_path_01 = nome_pasta + filename_01;
+        std::string full_path_02 = nome_pasta + filename_02;
 
         bool ok_01 = cam_01.startRecording(full_path_01);   
         bool ok_02 = cam_02.startRecording(full_path_02);
@@ -127,7 +122,7 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
             std::this_thread::sleep_for(std::chrono::microseconds(params.duracao_pos_trigger));
 
             // Finaliza a Gravação e fecha arquivo de dados:
-            if (cam_01.stopRecording() && cam_02.stopRecording()){
+            if (cam_01.stopRecording() &cam_02.stopRecording()){
                 std::cout << "Dados salvos no arquivo: " << "\"" << full_path_01 << "\"" << std::endl;
                 std::cout << "Dados salvos no arquivo: " << "\"" << full_path_02 << "\"" << std::endl;
             }
@@ -205,7 +200,9 @@ void saveData_Mono_TriggerHW(EventCamera &cam, gpiod_line *line, const PARAMETRO
 
 bool ativaLedLight(LightController& led, PWM& pwm_A, PWM& pwm_B){
     if (!pwm_A.getStatus()){
-        if (!pwm_A.enable())           {
+        if (pwm_A.enable())           
+            std::cout<<" PWM Blink: Ativado." <<std::endl;
+        else{
             std::cout<<" [Error]: não foi possível ativar o PWM blink led"<< std::endl;
             led.setRunning(false);
             return false;
@@ -213,7 +210,9 @@ bool ativaLedLight(LightController& led, PWM& pwm_A, PWM& pwm_B){
     }
 
     if (!pwm_B.getStatus()){
-        if (!pwm_B.enable()){
+        if (pwm_B.enable())
+            std::cout<<" PWM voltage: Ativado." <<std::endl;
+        else{
             std::cout<<" [Error]: não foi possível ativar o PWM que controla a tensão do led." << std::endl;
             led.setRunning(false);
             return false;
@@ -229,14 +228,14 @@ bool ativaLedLight(LightController& led, PWM& pwm_A, PWM& pwm_B){
 void desativaLedLight(LightController& led, PWM& pwm_A, PWM& pwm_B){
     if (pwm_A.getStatus()){
         pwm_A.disable();
-       // std::cout<<" PWM blink: Desativado."<< std::endl; 
+        std::cout<<" PWM blink: Desativado."<< std::endl; 
     }
     else
         std::cout<<" PWM blink já está desativado." << std::endl;
 
     if (pwm_B.getStatus()){
         pwm_B.disable();
-       // std::cout<<" PWM voltage: Desativado."<< std::endl; 
+        std::cout<<" PWM voltage: Desativado."<< std::endl; 
     }
     else
         std::cout<<" PWM voltage já está desativado." << std::endl;        
@@ -402,56 +401,6 @@ void MenuFrame(const cv::Mat& input, cv::Mat& output) {
 
 
 
-// Esta função é responsável por configurar a visualização dos frames das câmeras de eventos e do menu no dashboard.
-// Ela inicializa as ROIs para cada câmera e para o menu, configura os geradores de frames para cada câmera de eventos, e define os callbacks para atualizar os frames em tempo real.
-void configuraVisualizer(parametrosFrameGenerator &ctx, EventCamera event_cam[], int numCams, int cam_w, int cam_h) {
-    int largura_total = (cam_w * numCams) + ctx.largura_menu;
-
-    // Inicializa o Dashboard e as ROIs
-    ctx.dashboard = cv::Mat::zeros(cam_h, largura_total, CV_8UC3);
-    ctx.roi_L = ctx.dashboard(cv::Rect(0, 0, cam_w, cam_h));
-    
-    if (numCams == 2) {
-        ctx.roi_R = ctx.dashboard(cv::Rect(cam_w, 0, cam_w, cam_h));
-        ctx.roi_menu = ctx.dashboard(cv::Rect(cam_w * 2, 0, ctx.largura_menu, cam_h));
-    } else {
-        ctx.roi_menu = ctx.dashboard(cv::Rect(cam_w, 0, ctx.largura_menu, cam_h));
-    }
-
-    // Configura os Geradores e Callbacks
-    for (int i = 0; i < numCams; i++) {
-        ctx.generators.push_back(std::make_unique<Metavision::CDFrameGenerator>(cam_w, cam_h));
-        ctx.generators[i]->set_display_accumulation_time_us(10000);
-        ctx.generators[i]->set_color_palette(Metavision::ColorPalette::Dark);
-
-        // Start Generator Thread
-        ctx.generators[i]->start(30, [i, &ctx](const Metavision::timestamp &ts, const cv::Mat &frame) {
-            if (ctx.showViewer) {
-                std::unique_lock<std::mutex> lock(ctx.mutex);
-                if (i == 0) frame.copyTo(ctx.frame_L);
-                else frame.copyTo(ctx.frame_R);
-            }
-        });
-
-        // Set Camera Callback
-        event_cam[i].setCDCallback([i, &ctx](const Metavision::EventCD *ev_begin, const Metavision::EventCD *ev_end) {
-            if (ctx.showViewer) ctx.generators[i]->add_events(ev_begin, ev_end);
-        });
-    }
-
-    // Desenha o Menu Estático
-    std::vector<std::string> itens = {"*** Menu de Usuario ***", "1 - Ler Biases", "2 - Gravar Biases", "3 - Trigger REC", 
-                                      "4 - Blink LED", "5 - Cam. Convencional", "-----------------------", 
-                                      "+ / - : Potencia LED", "> / < : Duracao Pulso", "Q - Sair"};
-    for (size_t i = 0; i < itens.size(); ++i) {
-        cv::putText(ctx.roi_menu, itens[i], cv::Point(20, 40 + i * 35), 
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1, cv::LINE_AA);
-    }
-
-    cv::namedWindow(ctx.window_name, cv::WINDOW_AUTOSIZE);
-}
-
-
 
 // Funcção principal:
 int main(int argc, char *argv[]) {
@@ -572,15 +521,13 @@ int main(int argc, char *argv[]) {
     // Define se o sistema sera mono ou estéreo:
     const int numCams= 2;
 
-    // Instanciação dos objetos que controlam o hardware das câmeras de eventos:
+    // Apenas detecta as câmeras que estão conectadas ao barramento USB:
     EventCamera event_cam[numCams] = {
-            EventCamera(parametros_gerais.serialNumber_event_cam3, "Left", true),
-            EventCamera(parametros_gerais.serialNumber_event_cam2, "Right")
+                                    EventCamera(parametros_gerais.serialNumber_event_cam3, "Left", true),
+                                    EventCamera(parametros_gerais.serialNumber_event_cam2, "Right")
     };
 
 
-    // Configura alguns parametros iniciais para cada câmera de eventos, como o bias, trigger e sincronismo de hardware, 
-    // usando as funções da classe EventCamera, que por sua vez utilizam a API do SDK Metavision:
     for (int i=0; i<numCams; i++){
         // COnfigura, carrega, os biases na camera de eventos definidos em setings.json:
         if (!event_cam[i].setBias(parametros_gerais)){
@@ -596,80 +543,135 @@ int main(int argc, char *argv[]) {
         event_cam[i].configSincronismo();
     }
 
-    // Captura as dimensões da camera de eventos para configurar a visualização no dashboard:
-    int cam_w = event_cam[0].getWidth();
-    int cam_h = event_cam[0].getHeight();
+    std::mutex cd_frame_mutex;
+    cv::Mat cd_frame;
+    std::atomic<bool> show_viewer{true}; 
+    std::string window_name = "Visualizacao em Tempo Real";
 
-    // Instanci a struct que contem os parâmetros para configurar o construtor da visualização, 
-    // que é o objeto responsável por gerenciar a visualização dos frames das câmeras de eventos e do menu no dashboard:
-    parametrosFrameGenerator paramVis;
-    configuraVisualizer(paramVis, event_cam, numCams, cam_w, cam_h);
+    // Instancia o objeto cd_frame_generator da classe Metavision::CDFrameGenerator, que é um gerador de frames interno da SDK da Metavision.
+    // Ele acumula os eventos CD e gera frames para visualização em tempo real.    
+    Metavision::CDFrameGenerator cd_frame_generator(event_cam[0].getWidth(), event_cam[0].getHeight());
+    
+    // Define o tempo de exposição dos eventos acumulados.
+    // Aguarda acumular 10.000 us (10ms) de eventos para exibição: 
+    cd_frame_generator.set_display_accumulation_time_us(10000);
 
-    // Dispara o funcionamenoe das câmeras de eventos.
-    // A partir deste ponto, as câmeras de eventos começam a capturar e gerar frames, 
-    // que são processados pelos geradores de frames e exibidos no dashboard em tempo real.
+    // Gerador de frames interno
+    cd_frame_generator.start(30, [&](const Metavision::timestamp &ts, const cv::Mat &frame) {
+        if (show_viewer) {
+            std::unique_lock<std::mutex> lock(cd_frame_mutex);
+            frame.copyTo(cd_frame);
+        }
+    });
+
+    
+    // Callback para processar eventos CD
+    event_cam[0].setCDCallback([&](const Metavision::EventCD *ev_begin, const Metavision::EventCD *ev_end) {
+        if (show_viewer) {
+            cd_frame_generator.add_events(ev_begin, ev_end);
+        }
+    });
+
+
+    // Start as camera de eventos. A partir deste momento, as câmeras começam a captar os eventos e o gerador de frames 
+    // interno da SDK da Metavision começa a processar os eventos para exibição em tempo real:
     for (int i=0; i<numCams; i++){
         event_cam[i].callStart();
-    } 
+    }         
 
-    // Instacia objeto ledLight para controlar o estado do Led ou lase de luz estruturada:
+    // Sequencia Dummy Trigger para "acordar" o canal de trigger da Metavision:
+    gpiod_line_set_value(gpios_actives.triggerEventCam, 1);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    gpiod_line_set_value(gpios_actives.triggerEventCam, 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(500));
+
+    // Instancia o objeto da classe LighCotroller: 
     LightController ledLight;
-    bool running = true;
-        
+
+
+
+    
+    // 1. Dimensões baseadas no sensor (Assumindo que ambas as cams têm a mesma resolução)
+    int cam_w = event_cam[0].getWidth();
+    int cam_h = event_cam[0].getHeight();
+    int largura_menu = 300;
+
+    // 2. Cria o Dashboard Único (Lado a Lado: Cam_Esquerda | Cam_Direita | Menu)
+    // Se estiver em modo mono, a parte da direita simplesmente ficará preta ou com aviso.
+    cv::Mat dashboard = cv::Mat::zeros(cam_h, (cam_w * 2) + largura_menu, CV_8UC3);
+
+    // 3. Define as ROIs (Sub-regiões do Dashboard)
+    // Elas não ocupam memória nova, são apenas "janelas" para dentro da matriz dashboard.
+    cv::Mat roi_L    = dashboard(cv::Rect(0, 0, cam_w, cam_h));               // Área da Cam 0 (Master)
+    cv::Mat roi_R    = dashboard(cv::Rect(cam_w, 0, cam_w, cam_h));           // Área da Cam 1 (Slave)
+    cv::Mat roi_menu = dashboard(cv::Rect(cam_w * 2, 0, largura_menu, cam_h)); // Área do Menu
+
+    // 4. Desenha o Menu Estático na roi_menu APENAS UMA VEZ
+    std::vector<std::string> itens_menu = {
+        "*** SISTEMA METRA-EVENT ***",
+        "1 - Ler Biases",
+        "2 - Gravar Biases",
+        "3 - Trigger REC",
+        "4 - Blink LED",
+        "5 - Cam. Convencional",
+        "-----------------------",
+        "+ / - : Potencia LED",
+        "> / < : Duracao Pulso",
+        "Q - Sair"
+    };
+
+    for (size_t i = 0; i < itens_menu.size(); ++i) {
+        cv::putText(roi_menu, itens_menu[i], cv::Point(20, 40 + i * 35), 
+                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 0), 1, cv::LINE_AA);
+    }
+
+    // Única janela necessária
+    cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
+
+
+    //********************************************************************************************  
+    //****************************** Loop principal **********************************************
+    //********************************************************************************************/
+    // Flag que habilita a execução do loop while:
+    bool running = true; 
+    
     // Loop principal:    
     while(running) {
 
         int key = cv::waitKey(1);
 
-        if (paramVis.showViewer) {
-            std::unique_lock<std::mutex> lock(paramVis.mutex);
-
-            // --- ATUALIZA CÂMERA ESQUERDA (Master / cd_frame_L) ---
-            if (!paramVis.frame_L.empty()) {
-                if (paramVis.frame_L.channels() == 1)
-                    cv::cvtColor(paramVis.frame_L, paramVis.roi_L, cv::COLOR_GRAY2BGR);
+        if (show_viewer) {
+            std::unique_lock<std::mutex> lock(cd_frame_mutex);
+            
+            // Atualiza Câmera Esquerda (Master)
+            if (!cd_frame.empty()) {
+                if (cd_frame.channels() == 1)
+                    cv::cvtColor(cd_frame, roi_L, cv::COLOR_GRAY2BGR);
                 else
-                    paramVis.frame_L.copyTo(paramVis.roi_L);
-
-                // Inse3re texto no frame da câmera esquerda para identificar que é a câmera slave:
-                cv::putText(paramVis.roi_L, "Left (Master)", cv::Point(15, 30), 
-                cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
-
+                    cd_frame.copyTo(roi_L);
             }
 
-            // --- ATUALIZA CÂMERA DIREITA (Slave / cd_frame_R) ---
-            if (numCams == 2) {
-                if (!paramVis.frame_R.empty()) {
-                    if (paramVis.frame_R.channels() == 1)
-                        cv::cvtColor(paramVis.frame_R, paramVis.roi_R, cv::COLOR_GRAY2BGR);
-                    else
-                        paramVis.frame_R.copyTo(paramVis.roi_R);
-                    // Inse3re texto no frame da câmera direita para identificar que é a câmera slave:    
-                    cv::putText(paramVis.roi_R, "Right (Slave)", cv::Point(15, 30), 
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);                         
-                }
-               
+            // Se estiver em modo Mono, coloque um aviso na segunda metade
+            if (numCams < 2) {
+                cv::putText(roi_R, "SISTEMA MONO", cv::Point(cam_w/4, cam_h/2), 
+                            cv::FONT_HERSHEY_SIMPLEX, 0.8, cv::Scalar(0, 0, 255), 2);
             } 
             else {
-                // Se estiver em modo Mono, mantém a ROI_R com o aviso
-                // Criar um fundo levemente diferente ajuda a distinguir que está desativado
-                paramVis.roi_R = cv::Scalar(20, 20, 20); 
-                cv::putText(paramVis.roi_R, "MODO MONO ATIVO", cv::Point(cam_w/4, cam_h/2), 
-                            cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 150), 2);
+                // Se tiver a segunda cam, você usaria o cd_frame_02 aqui:
+                // cd_frame_02.copyTo(roi_R);
             }
         }
 
-        // Exibe o Dashboard ÚNICO contendo [Cam L][Cam R][Menu]
-        cv::imshow(paramVis.window_name, paramVis.dashboard);          
+        // Exibe o Dashboard COMPLETO em uma única janela
+        cv::imshow(window_name, dashboard);           
 
-        /*
+
         /// Exibe menu de escolha:
         if (parametros_gerais.hab_exibe_menu){
             //limparTela();
             showMenu(pin_TriggerEventCam, pin_PiscaLed, parametros_gerais.duracao_pulso_trigger);
             parametros_gerais.hab_exibe_menu= false;
         }
-        */
 
         // Máquina de estados do menu principal:
         if (key!=-1){
@@ -677,23 +679,20 @@ int main(int argc, char *argv[]) {
 
             switch (my_char)
             {
-                case '1':{
+                case '1':
                         // Efetua a leitura dos biases da camera de eventos:
-                        for (int i=0; i<numCams; i++){
-                            event_cam[i].readCameraBiases();
-                        }
+                        event_cam[0].readCameraBiases();
                         break;
-                }
                 
                 case '2':
                         // Chama função para configurar, enviar, os biases à camera de eventos:                    
-                        for (int i=0; i<numCams; i++){
-                            event_cam[i].readCameraBiases();
-                        }
+                        event_cam[0].setBias(parametros_gerais);
                         break;
 
                 case '3':
                         {
+                            std::cout << "\nTrigger Com duração de: "<< parametros_gerais.duracao_pulso_trigger << "us" << std::endl;
+
                             // Usa-se uma thread com função lambda, onde:
                             // [&] = Captura: ela captura todas as variáveis e métodos, por referencia, no escopo de main(), pois ela utilzia várias funções e variáveis;
                             // () = Parâmetros: Sem nenhum parâmetro como argumento;
@@ -703,12 +702,8 @@ int main(int argc, char *argv[]) {
                                     // Primeira ativa a projeção da luz estruturada:
                                     ativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
                                     // Chama a gravação do dados da câmera de eventos, que é feita em paralelo, ou seja, enquanto a câmera de eventos está gravando os 
-                                    // dados no arquivo .raw, o programa continua executando as próximas linhas de código, sem esperar a finalização da gravação.  
-                                    if (numCams > 1) {
-                                        saveData_Stereo_TriggerHW(event_cam[0], event_cam[1], gpios_actives.triggerEventCam, parametros_gerais);
-                                    } else {
-                                        saveData_Mono_TriggerHW(event_cam[0], gpios_actives.triggerEventCam, parametros_gerais);
-                                    }
+                                    // dados no arquivo .raw, o programa continua executando as próximas linhas de código, sem esperar a finalização da gravação.                                   
+                                    saveData_Mono_TriggerHW(event_cam[0], gpios_actives.triggerEventCam, parametros_gerais); 
                                     // Por ultimo, desativa o projeção de luz estruturada:
                                     desativaLedLight(ledLight, pwm_BlinkLed, pwm_PowerLed);
                                 }
@@ -788,11 +783,7 @@ int main(int argc, char *argv[]) {
 
 
     // Para o gerador de frame:
-    for (auto& gen : paramVis.generators) {
-        if (gen) {
-            gen->stop();
-        }
-    }
+    cd_frame_generator.stop();
 
     // Fecha todas as janelas:    
     cv::destroyAllWindows();

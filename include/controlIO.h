@@ -134,19 +134,19 @@ public:
 // $ sudo cat /sys/kernel/debug/pwm 
 
 class PWM {
-private:
-    int export_pwm; // Valor zero 
-    long period_pwm; // Período do pwm em nano segundos. Inicia o pwm com T= 1.000.000 (frequencia de 1kHz), que é o default da Jetson, mais estável.
-    long dutyCicle_pwm; // Dutycicle em percetual (%). Inicia com 50%.
-    std::atomic<bool> active_pwm; //Quando este valor for true o pulso pwm será liberado na saída.
+private: 
+    int64_t period; // Em nano segundos.
+    int64_t dutyCycle; // Em percentual.
+    std::atomic<bool> active; 
 
-    std::string fullPath_pwm_chip;
-    std::string canal_pwm;
+    std::string fullPath_chip;
+    std::string canal;
+    std::string nome;
 
 
-    // Este método privado é usado para setar os parâmetros nos respectivos arquivos: periodo, duty-cicle e enable:
+    // Este método privado é usado para setar os parâmetros nos respectivos arquivos: periodo, duty-cycle e enable:
     bool writeToFile(std::string file, std::string value) {
-        std::ofstream fs(fullPath_pwm_chip + canal_pwm + file);
+        std::ofstream fs(fullPath_chip + canal + file);
         if (fs.is_open()) {
             fs << value;
             fs.close();
@@ -158,86 +158,43 @@ private:
 
 public:
     // Construtor com as devidas inicializações das variáveis menbros privadas:
-    PWM() : export_pwm(0), 
-            period_pwm(1000000), 
-            dutyCicle_pwm(50), 
-            active_pwm(false), 
-            canal_pwm("pwm0/"), 
-            fullPath_pwm_chip(" ") {}
+    PWM(int64_t periodo_ns, int64_t dutycycle_perc, std::string pathToChannel, std::string canal);
 
-    ~PWM(){        
-    }        
+    // Destrutor da classe, desabilita o PWM e libera o canal:
+    ~PWM();      
 
      // Seta a variável membro "periodo_pwm", que define a frequencia de trabalho do PWM, padrão é 1kHz:
-    bool setPeriodo(long periodo_ns) { 
-        // Atualiza  variável que guarda o periodo:
-        bool set_ok= false;
-        period_pwm= periodo_ns;
-
-        // Configura o periodo:
-        if (writeToFile("period", std::to_string(period_pwm)))
-            set_ok= true;
-        return set_ok;
-    }
+    bool setPeriodo(int64_t periodo_ns);
     
     // Seta a variável membro "DutyCicle_pwm", que define a frequencia de trabalho do PWM, padrão é 1kHz:
-    bool setDutyCycle(long dutyCycle_ns) {
-        dutyCicle_pwm= dutyCycle_ns;
-        bool set_ok= false;
-        
-        // Configura o duty_cicle
-        long dutyCicle_pwm_ns= (dutyCicle_pwm*period_pwm)/100;
-        if (writeToFile("duty_cycle", std::to_string(dutyCicle_pwm_ns)))
-            set_ok= true; 
-        return set_ok;            
-    }
-
-    // Seta a variável membro "active_pwm", usada para guardar o status de habilitação do pwm.
-    // Também habilita a geração do sinal pwm: 
-    bool enable() { 
-        if (writeToFile("enable", "1"))
-            active_pwm= true;
-        return active_pwm.load();   
-    }
-
-
-     // Desabilita o PWM:
-    bool disable() { 
-        if (writeToFile("enable", "0"))
-            active_pwm= false;
-        return active_pwm.load();
-    }
-   
+    bool setDutyCycle(int64_t dutycycle_perc);
 
     // INicializa o path do chip referente ao PWM:
     void setPathFileChip(std::string path) { 
-        fullPath_pwm_chip= path; 
+        fullPath_chip= path; 
     }
    
     void setChannel(std::string channel){     
-        canal_pwm= channel;    
+        canal= channel;    
     }
 
-    // Metodo get para o duty-cicle:
-    long getDutyCicle(){     
-        return dutyCicle_pwm;    
+    // Metodo get para o duty-cycle:
+    long getDutyCycle(){     
+        return dutyCycle;    
     }
 
     bool getStatus(){
-        return active_pwm;
+        return active;
     }
 
-   // Inicializa o canal pwm:
-    void inicializa_canal() {
-        // Exporta o canal:
+    // Inicializa o canal pwm:
+    void inicializa_canal();
 
-        // Primeiro verifica se a pasta pwm0 existe se sim o canal já foi exportado.
-        // A pasta pwm0 é criada com o export, se ela já existe não tem porque recriá-la, basta recofnigurar o pwm 
-        if (!std::filesystem::exists(fullPath_pwm_chip + "pwm0/")){
-            // Se não existe exporta:
-            std::ofstream export_file(fullPath_pwm_chip + "export");
-            export_file << "0"; 
-            export_file.close(); 
-        }
-    }
+    // Seta a variável membro "active_pwm", usada para guardar o status de habilitação do pwm.
+    // Também habilita a geração do sinal pwm: 
+    bool enable() ;
+
+    // Desabilita o PWM:
+    bool disable() ;
+
 };

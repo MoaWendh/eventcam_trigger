@@ -1,81 +1,113 @@
 #include <filesystem>
 #include <fstream>
 #include <nlohmann/json.hpp>
+#include <utility>
 
 #include <metavision/sdk/stream/camera.h>
-#include <metavision/sdk/core/utils/cd_frame_generator.h>
 #include <metavision/hal/facilities/i_trigger_in.h>
 #include <metavision/hal/facilities/i_ll_biases.h>
-#include <metavision/hal/device/device_discovery.h>
+#include <metavision/hal/facilities/i_camera_synchronization.h>
 
 #include "event_camera.h"
+#include "parametros.h"
 
 using json = nlohmann::json;
 
-// O construtor da classe camera_conv:
-EventCamera::EventCamera(std::string serial) 
-    : serialNumber(serial), inicializada(false) {
+// O construtor da classe camera_conv.
+// Se a câmera for encontrada e aberta com sucesso, o objeto cam é inicializado com a câmera correspondente ao serial number fornecido.
+// Isto singifica que após gerar o objeto cam, a câmera de eventos já está aberta e pronta para uso.
+// Estabeleceu um canal de comunicação: agora o objeto cam é a interface para interagir com a câmera, ler eventos, configurar parâmetros, etc.
+// Hardware incializado: agora é possível acessar as funcionalidades do device câmera através do objeto cam.
+EventCamera::EventCamera(std::string serial, std::string nm, bool master) 
+: Metavision::Camera(), // Inicia a base vazia/não inicializada
+  serialNumber(serial),
+  isMaster(master)
+{
+    // Tenta mover a câmera aberta para a base desta instância
+    // Cast de 'this' para a classe base para usar o operator= (move assignment)
+    static_cast<Metavision::Camera&>(*this) = Metavision::Camera::from_serial(serialNumber);
+    this->width = this->geometry().get_width();
+    this->height = this->geometry().get_height();
+    this->inicializada = true;
+    this->nome = nm;
+    this->is_running = false;
 }
 
-// Esta função tenta abrir a câmera de eventos usando o serial number fornecido no construtor. 
-// Se falhar, ela tenta listar todas as câmeras conectadas para ajudar na depuração. 
-bool EventCamera::openEventCam(){
-    try {
-            // Forma alternativa de abrir a câmera, sem usar o serial number, mas ela pode abrir a câmera errada se houver mais de uma conectada:
-            //camera = Metavision::Camera::from_first_available();
 
-            // Se a câmera for encontrada e aberta com sucesso, o objeto cam é inicializado com a câmera correspondente ao serial number fornecido.
-            // Isto singifica que após gerar o objeto cam, a câmera de eventos já está aberta e pronta para uso.
-            // Estabeleceu um canal de comunicação: agora o objeto cam é a interface para interagir com a câmera, ler eventos, configurar parâmetros, etc.
-            // Hardware incializado: agora é possível acessar as funcionalidades do device câmera através do objeto cam.
-            cam = Metavision::Camera::from_serial(serialNumber);
-            return true;
-        } 
-        catch (const Metavision::CameraException &e) {
-            std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
-            try{
-                // Tenta capturar a lista de seriais de todas as câmeras conectadas
-                Metavision::DeviceDiscovery::SerialList dispositivos= Metavision::DeviceDiscovery::list();
-                if (!dispositivos.empty()){
-                    int numDevices= dispositivos.size();
-                    std::cout << "Cameras conectadas:" << std::endl;
-                    for (int ct=0; ct<numDevices; ct++){
-                        // std::next(iterador_inicial, n_posições)
-                        auto it = std::next(dispositivos.begin(), ct);
-                        std::string sn = *it; 
-                        
-                        std::cout << "Câmera [" << ct << "] - Serial: " << sn << std::endl;
-                    }
-                }
-                else
-                    std::cerr << "Nenhuma câmera de eventos detectada no barramento USB." << std::endl; 
-            }
-            catch (const std::exception &e) {
-                std::cerr << "[ERRO] Falha ao escanear barramento USB." << e.what() << std::endl;
-            }    
-            return false;
+// Da um start na camera, a apritr deste momento ele irá enviar dados de eventos:
+void EventCamera::callStart(){
+    // Antes de dar um start() verificar se ela já nçao está rodando, para evitar erros de start() em uma câmera já em execução:
+    if (!this->is_running){
+         if (this->start()){
+            this->is_running = true;
+            std::cout << "Câmera " << nome << ":........ Inicializada" << std::endl;
+        }
+        else{
+            std::cout << "ERRO ao iniciar a câmera de eventos: " << nome << std::endl;
+        }
+    }
+    else{
+         std::cout << "Camera nome de ventos: " << nome << " - Nº serie: " << serialNumber << " já está em execução." << std::endl;
     }
 }
+
+
+/*
+bool EventCamera::openEventCam() {
+try {
+        // Tentamos instanciar a câmera e mover para o nosso ponteiro
+        cam = std::make_unique<Metavision::Camera>(Metavision::Camera::from_serial(serialNumber));
+        
+        if (cam) {
+            inicializada = true;
+            std::cout << "Hardware inicializado com sucesso via serial: " << serialNumber << std::endl;
+            return true;
+        }
+    } 
+    catch (const Metavision::CameraException &e) {
+        std::cerr << "Erro ao abrir a camera: " << e.what() << std::endl;
+        
+        // Sua lógica de DeviceDiscovery permanece exatamente igual
+        try {
+            Metavision::DeviceDiscovery::SerialList dispositivos = Metavision::DeviceDiscovery::list();
+            if (!dispositivos.empty()) {
+                std::cout << "Cameras conectadas no barramento:" << std::endl;
+                for (size_t ct = 0; ct < dispositivos.size(); ct++) {
+                    auto it = std::next(dispositivos.begin(), ct);
+                    std::cout << "Câmera [" << ct << "] - Serial: " << *it << std::endl;
+                }
+            } else {
+                std::cerr << "Nenhuma câmera detectada no barramento USB." << std::endl;
+            }
+        } catch (...) {
+            std::cerr << "[ERRO] Falha crítica ao escanear USB." << std::endl;
+        }
+        return false;
+    }
+    return false;
+}
+*/
+
 
 
 void EventCamera::getParametrosGeraisEventCam(){
     // Captura dados da câmera instanciada:
     try {
         std::cout << "*** Camera de eventos ***"  << std::endl; 
-        parametrosGerais.fabricante = cam.get_camera_configuration().integrator;
+        parametrosGerais.fabricante = this->get_camera_configuration().integrator;
 
         std::cout << "Plugin versão........: " << parametrosGerais.fabricante << std::endl; 
 
-        parametrosGerais.plugin = cam.get_camera_configuration().plugin_name;
+        parametrosGerais.plugin = this->get_camera_configuration().plugin_name;
         std::cout << "Plugin versão........: " << parametrosGerais.plugin << std::endl; 
 
-        parametrosGerais.serial_cam = cam.get_camera_configuration().serial_number;
+        parametrosGerais.serial_cam = this->get_camera_configuration().serial_number;
         std::cout << "Nº Serial cam........: " << parametrosGerais.serial_cam << std::endl;
 
-        parametrosGerais.versionFirm = cam.get_camera_configuration().firmware_version;
+        parametrosGerais.versionFirm = this->get_camera_configuration().firmware_version;
         std::cout << "Versão do firmware...: " << parametrosGerais.versionFirm << std::endl;
 
-        parametrosGerais.dataEncodeFormat = cam.get_camera_configuration().data_encoding_format;
+        parametrosGerais.dataEncodeFormat = this->get_camera_configuration().data_encoding_format;
         std::cout << "Formato dos dados....: " << parametrosGerais.dataEncodeFormat << std::endl;
         std::cout << std::endl;
     } 
@@ -89,10 +121,10 @@ void EventCamera::getParametrosGeraisEventCam(){
 void EventCamera::readCameraBiases() {
     try {
         // Acessar via HAL explicitamente:
-        auto *biases = cam.get_device().get_facility<Metavision::I_LL_Biases>();
+        auto *biases = this->get_device().get_facility<Metavision::I_LL_Biases>();
 
         if (biases) {
-            std::cout << "\n--- Configuracao Atual de Biases (HD Sensor) ---" << std::endl;
+            std::cout << "\nBases Atual da câmera: "<< this->nome << std::endl;
             
             // Lista de biases comuns no IMX636 para verificar manualmente
             std::vector<std::string> bias_names = {
@@ -138,63 +170,45 @@ int lerJsonFile(std::string path, std::string biasName){
 
 
 
-bool EventCamera::setBias() {
+bool EventCamera::setBias(PARAMETROS_GERAIS &params) {
 
     // Os biases max e min. são definidos em https://docs.prophesee.ai/stable/hw/manuals/biases.html 
     // Os calores para a ca~mera SilkyEvCam pertencem a geração Gen3.1 VGA, assim os valores máximos e mínimo
-    // são deinfidos como:
-    
-    const int bias_diff_default= 299; // Não alterar o valor do bias_diff, o default é 299.
-    
-    int bias_diff_on_min= bias_diff_default + 75; // O valor mínimo do bias_diff_on é bias_dif_default + 75.
-    int bias_diff_on_max= bias_diff_default + 200; // O valor máximo do bias_diff_on é bias_dif_default + 200.
-    
-    int bias_diff_off_min= 100; // O valor mínimo do bias_diff_off é 100.
-    int bias_diff_off_max= bias_diff_default - 65; // O valor máximo do bias_diff_off é bias_dif_default -65
-    
-    int bias_fo_min= 1250;
-    int bias_fo_max= 1800;
-    
-    int bias_hpf_min= 900;
-    int bias_hpf_max= 1800;
-   
-    int bias_refr_min= 1300;
-    int bias_refr_max= 1800;
-
+  
     // ANtes de gravar os valores de biases na camera verifica se os valores extrapolam os limites:
     int bias_diff_off= lerJsonFile(fullPath, "bias_diff_off");
-    if (bias_diff_off<bias_diff_off_min || bias_diff_off>bias_diff_off_max){
-        std::cout<< "ERRO!! O valor de bias_diff_off= "<< bias_diff_off << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_diff_off_min << " e " << bias_diff_off_max << std::endl;  
+    if (bias_diff_off<params.bias_diff_off_min || bias_diff_off>params.bias_diff_off_max){
+        std::cout<< "ERRO!! O valor de bias_diff_off= "<< bias_diff_off << " está fora dos limites!!"<< " Ele deve ser entre=" << params.bias_diff_off_min << " e " << params.bias_diff_off_max << std::endl;  
         return false;
     }
 
     int bias_diff_on= lerJsonFile(fullPath, "bias_diff_on");
-    if (bias_diff_on<bias_diff_on_min || bias_diff_on>bias_diff_on_max){
-        std::cout<< "ERRO!! O valor de bias_diff_on= "<< bias_diff_on << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_diff_on_min << " e " << bias_diff_on_max << std::endl;  
+    if (bias_diff_on<params.bias_diff_on_min || bias_diff_on>params.bias_diff_on_max){
+        std::cout<< "ERRO!! O valor de bias_diff_on= "<< bias_diff_on << " está fora dos limites!!"<< " Ele deve ser entre=" << params.bias_diff_on_min << " e " << params.bias_diff_on_max << std::endl;  
         return false;
     }
 
     int bias_fo= lerJsonFile(fullPath, "bias_fo");
-    if (bias_fo<bias_fo_min || bias_fo>bias_fo_max){
-        std::cout<< "ERRO!! O valor de bias_fo= "<< bias_fo << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_fo_min << " e " << bias_fo_max << std::endl;  
+    if (bias_fo<params.bias_fo_min || bias_fo>params.bias_fo_max){
+        std::cout<< "ERRO!! O valor de bias_fo= "<< bias_fo << " está fora dos limites!!"<< " Ele deve ser entre=" << params.bias_fo_min << " e " << params.bias_fo_max << std::endl;  
         return false;
     }   
     
     int bias_hpf= lerJsonFile(fullPath, "bias_hpf");
-    if (bias_hpf<bias_hpf_min || bias_hpf>bias_hpf_max){
-        std::cout<< "ERRO!! O valor de bias_hpf= "<< bias_hpf << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_hpf_min << " e " << bias_hpf_max << std::endl;
+    if (bias_hpf<params.bias_hpf_min || bias_hpf>params.bias_hpf_max){
+        std::cout<< "ERRO!! O valor de bias_hpf= "<< bias_hpf << " está fora dos limites!!"<< " Ele deve ser entre=" << params.bias_hpf_min << " e " << params.bias_hpf_max << std::endl;
         return false;  
     }   
 
     int bias_refr= lerJsonFile(fullPath, "bias_refr");
-    if (bias_refr<bias_refr_min || bias_refr>bias_refr_max){
-        std::cout<< "ERRO!! O valor de bias_refr= "<< bias_refr << " está fora dos limites!!"<< " Ele deve ser entre=" << bias_refr_min << " e " << bias_refr_max << std::endl; 
+    if (bias_refr<params.bias_refr_min || bias_refr>params.bias_refr_max){
+        std::cout<< "ERRO!! O valor de bias_refr= "<< bias_refr << " está fora dos limites!!"<< " Ele deve ser entre=" << params.bias_refr_min << " e " << params.bias_refr_max << std::endl; 
         return false; 
     }  
 
 
     // Acessa a Facility de Biases de baixo nível:
-    auto *i_ll_biases = cam.get_device().get_facility<Metavision::I_LL_Biases>();
+    auto *i_ll_biases = this->get_device().get_facility<Metavision::I_LL_Biases>();
     // Testa se o acesso foi liberado:
     if (!i_ll_biases) {
         std::cerr << "[Erro] Nao foi possivel acessar a interface de Biases do hardware!" << std::endl;
@@ -210,9 +224,9 @@ bool EventCamera::setBias() {
         i_ll_biases->set("bias_hpf", bias_hpf);
         i_ll_biases->set("bias_refr", bias_refr);
 
-        std::cout << "Biases atualizados com dados do arquivo \""<< fileName.c_str() << "\"" << " ...câmera: " << serialNumber << std::endl;
+        std::cout << "Câmera " << nome << ":....... NºSérie " << serialNumber << std::endl;
+        std::cout << "Câmera " << nome << ":....... " << "Biases atualizados" << std::endl;
         return true;
-
     } catch (const std::exception &e) {
         std::cerr << "[Erro] Não foi possível gravar biases na câmera!!! " << e.what() << std::endl;
         return false;
@@ -224,17 +238,19 @@ bool EventCamera::setBias() {
 }
 
 
+
 // Este método configura a camera de eventos para gerar trigger por hardware:
 void EventCamera::enableHardwareTrigger() {
     try {
         // O método get_device() retorna o dispositivo atual
         // O facility retorna um ponteiro para a interface de TriggerIn, que é a responsável por configurar o sincronismo de hardware e gerar trigger por hardware:
-        auto *i_trigger_in = cam.get_device().get_facility<Metavision::I_TriggerIn>();
+        //retorna um ponteiro para a interface de TriggerIn, que é a responsável por configurar o sincronismo de hardware e gerar trigger por hardware:
+        auto *i_trigger_in = this->get_device().get_facility<Metavision::I_TriggerIn>();
 
         if (i_trigger_in) {
             // Habilita o canal principal (Main) para bordas de subida e descida
             i_trigger_in->enable(Metavision::I_TriggerIn::Channel::Main);           
-            std::cout << "Trigger habilitado - bordas subida e descida ..............câmera: " << serialNumber << std::endl;
+            std::cout << "Câmera " << nome << ":....... " << "Trigger habilitado" << std::endl;
         } 
         else 
             std::cerr << "[Erro] Não foi possível acessar a interface de TriggerIn do hardware!" << std::endl;
@@ -245,33 +261,75 @@ void EventCamera::enableHardwareTrigger() {
 }
 
 
-bool EventCamera::start() {
+std::string EventCamera::verificaModoDeSincronismo(Metavision::I_CameraSynchronization *i_cam_sync){
     try {
-        // Inicia a câmera interna da classe
-        cam.start();      
-        std::cout << "Captura de eventos iniciada................................câmera: " <<  serialNumber << std::endl;
-        return true;
+        Metavision::I_CameraSynchronization::SyncMode modo_atual = i_cam_sync->get_mode();
+
+        switch (modo_atual) {
+            case Metavision::I_CameraSynchronization::SyncMode::MASTER:
+                return "MASTER";
+                break;
+            case Metavision::I_CameraSynchronization::SyncMode::SLAVE:
+                return "SLAVE";
+                break;
+            case Metavision::I_CameraSynchronization::SyncMode::STANDALONE:
+                return "STANDALONE";
+                break;
+            default:
+                return "DESCONHECIDO";
+                break;
+        }
+     
     } catch (const std::exception &e) {
-        std::cerr << "[ERRO] Falha ao iniciar a camera " << serialNumber 
-                  << ": " << e.what() << std::endl;
-        return false;
+        std::cerr << "[EXCECAO Sincronismo]: " << e.what() << std::endl;
+        return "ERRO_EXCECAO";
+    }
+    return "FALHA_LOGICA";
+}
+
+// Método que configura o sincronismo de tempo entre duas cameras de eventos. 
+// Se ela for master, será confiurada para gerar o clock de sincronismo de tempo.
+// Se for slave, será confiurada para receber o clock de sincronismo de tempo da camera master.
+// Fonte: https://docs.prophesee.ai/4.6.2/hw/manuals/timing_interfaces.html#chapter-timing-interfaces-trigger-interfaces 
+void EventCamera::configSincronismo() {
+    try{
+        std::string tipo_sincronismo;
+        if (isMaster){
+            Metavision::I_CameraSynchronization *i_camera_synchronization = this->get_device().get_facility<Metavision::I_CameraSynchronization>();
+            if (i_camera_synchronization) {
+                tipo_sincronismo= verificaModoDeSincronismo(i_camera_synchronization);
+                i_camera_synchronization->set_mode_master();
+                tipo_sincronismo= verificaModoDeSincronismo(i_camera_synchronization);
+                std::cout << "Câmera " << nome << ":....... " << tipo_sincronismo << std::endl;
+                std::cout << std::endl;
+            } 
+            else 
+                std::cerr << "[Erro] Não foi possível acessar a interface de CameraSynchronization do hardware!" << std::endl;
+        }
+        else{
+            auto *i_camera_synchronization = this->get_device().get_facility<Metavision::I_CameraSynchronization>();
+            if (i_camera_synchronization) {
+                tipo_sincronismo= verificaModoDeSincronismo(i_camera_synchronization);
+                i_camera_synchronization->set_mode_slave();
+                tipo_sincronismo= verificaModoDeSincronismo(i_camera_synchronization);
+                std::cout << "Câmera " << nome << ":....... " << tipo_sincronismo << std::endl;
+                std::cout << std::endl;
+                
+            } 
+            else 
+                std::cerr << "[Erro] Não foi possível acessar a interface de CameraSynchronization do hardware!" << std::endl;
+        }
+    }
+    catch (const std::exception &e) {
+        std::cerr << "[EXCECAO Sincronismo]: " << e.what() << std::endl;
     }
 }
 
-
-void EventCamera::stop() {
-    try {
-        cam.stop();
-        std::cout << "Captura e eventos finalizada...câmera: " << serialNumber << std::endl;
-    } catch (...) {
-        // Ignora erros ao parar para garantir que o programa feche
-    }
-}
 
 // Este método inciai o resgistro dos eventos, solicitado pelo trigger de hardware: 
 bool EventCamera::startRecording(const std::string& fullPath) {
     try {
-        return cam.start_recording(fullPath);
+        return this->start_recording(fullPath);
     } catch (const std::exception &e) {
         std::cerr << "[ERRO] Falha ao iniciar gravação: " << e.what() << std::endl;
         return false;
@@ -281,7 +339,7 @@ bool EventCamera::startRecording(const std::string& fullPath) {
 
 // Para a gravação de eventos:
 bool EventCamera::stopRecording() {
-    return cam.stop_recording();
+    return this->stop_recording();
 }
 
 
