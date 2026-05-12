@@ -294,8 +294,9 @@ std::string EventCamera::verificaModoDeSincronismo(Metavision::I_CameraSynchroni
 void EventCamera::configSincronismo() {
     try{
         std::string tipo_sincronismo;
+        Metavision::I_CameraSynchronization *i_camera_synchronization;
         if (isMaster){
-            Metavision::I_CameraSynchronization *i_camera_synchronization = this->get_device().get_facility<Metavision::I_CameraSynchronization>();
+            i_camera_synchronization = this->get_device().get_facility<Metavision::I_CameraSynchronization>();
             if (i_camera_synchronization) {
                 tipo_sincronismo= verificaModoDeSincronismo(i_camera_synchronization);
                 i_camera_synchronization->set_mode_master();
@@ -307,7 +308,7 @@ void EventCamera::configSincronismo() {
                 std::cerr << "[Erro] Não foi possível acessar a interface de CameraSynchronization do hardware!" << std::endl;
         }
         else{
-            auto *i_camera_synchronization = this->get_device().get_facility<Metavision::I_CameraSynchronization>();
+            i_camera_synchronization = this->get_device().get_facility<Metavision::I_CameraSynchronization>();
             if (i_camera_synchronization) {
                 tipo_sincronismo= verificaModoDeSincronismo(i_camera_synchronization);
                 i_camera_synchronization->set_mode_slave();

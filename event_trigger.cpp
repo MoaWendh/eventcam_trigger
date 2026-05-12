@@ -73,16 +73,12 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
         auto tempo_t = std::chrono::system_clock::to_time_t(agora);
         struct tm *info = std::localtime(&tempo_t);
 
-        // gera o nome do diretório:
-        //std::stringstream nome_pasta_aux;
-        //nome_pasta_aux << "data_evecam_" << std::put_time(info, "%d_%m_%Y");
-        //std::string nome_pasta_01 = nome_pasta_aux.str();
         std::stringstream Path_01; 
         Path_01<< "data_evecam_" << std::put_time(info, "%d_%m_%Y") << "/L";
         std::stringstream Path_02;
         Path_02<< "data_evecam_" << std::put_time(info, "%d_%m_%Y") << "/R";
 
-        // Criar a pasta se ela não existir
+        // Cria as pastas se elas não existirem:
         if (!std::filesystem::exists(Path_01.str())) {
             std::filesystem::create_directories(Path_01.str());
         }
@@ -90,7 +86,7 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
             std::filesystem::create_directories(Path_02.str());
         }
 
-        // Gera o nome do arquivo de dados .raw:
+        // Gera os nomes dos arquivos de dados .raw:
         std::string serialNumber_01= cam_01.getSerial();
         std::string serialNumber_02= cam_02.getSerial();
         std::stringstream ss_time;
@@ -101,6 +97,7 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
         std::string full_path_01 = Path_01.str()  + "/" + filename_01;
         std::string full_path_02 = Path_02.str()  + "/" + filename_02;
 
+        // Dispara a gravação dos eventos nas duas câmeras:
         bool ok_01 = cam_01.startRecording(full_path_01);   
         bool ok_02 = cam_02.startRecording(full_path_02);
 
@@ -111,7 +108,6 @@ void saveData_Stereo_TriggerHW(EventCamera &cam_01 , EventCamera &cam_02, gpiod_
             // Pré-trigger: aguarda um tempo em microsegundos definido em duracao_PosTrigger_microSeg para garantir que o arquivo foi aberto e o buffer inicializou:
             std::this_thread::sleep_for(std::chrono::microseconds(params.duracao_pre_trigger));
             
-
             // *******************Início do pulso de trigger**************** 
             // Transição do trigger para nível alto:
             gpiod_line_set_value(line, 1);  
@@ -410,12 +406,15 @@ void configuraVisualizer(parametrosFrameGenerator &ctx, EventCamera event_cam[],
     // Inicializa o Dashboard e as ROIs
     ctx.dashboard = cv::Mat::zeros(cam_h, largura_total, CV_8UC3);
     ctx.roi_L = ctx.dashboard(cv::Rect(0, 0, cam_w, cam_h));
-    
+    std::string window_name;
+
     if (numCams == 2) {
         ctx.roi_R = ctx.dashboard(cv::Rect(cam_w, 0, cam_w, cam_h));
         ctx.roi_menu = ctx.dashboard(cv::Rect(cam_w * 2, 0, ctx.largura_menu, cam_h));
+        window_name= ctx.window_name_stereo;
     } else {
         ctx.roi_menu = ctx.dashboard(cv::Rect(cam_w, 0, ctx.largura_menu, cam_h));
+        window_name= ctx.window_name_single;
     }
 
     // Configura os Geradores e Callbacks
@@ -440,15 +439,27 @@ void configuraVisualizer(parametrosFrameGenerator &ctx, EventCamera event_cam[],
     }
 
     // Desenha o Menu Estático
-    std::vector<std::string> itens = {"*** Menu de Usuario ***", "1 - Ler Biases", "2 - Gravar Biases", "3 - Trigger REC", 
-                                      "4 - Blink LED", "5 - Cam. Convencional", "-----------------------", 
-                                      "+ / - : Potencia LED", "> / < : Duracao Pulso", "Q - Sair"};
+    std::vector<std::string> itens = {"--- Menu de Usuario ---", 
+                                      "1 - Ler Biases", 
+                                      "2 - Gravar Biases", 
+                                      "3 - Trigger REC", 
+                                      "4 - Blink LED", 
+                                      "5 - Cam. Convencional", 
+                                      "-----------------------", 
+                                      "+ / - : Potencia LED", 
+                                      "> / < : Duracao Pulso", 
+                                      "Q - Sair"};
+    
+    // Configura a cor de fundo do canvas do menu:
+    ctx.roi_menu.setTo(cv::Scalar(220, 220, 220));
+
+    // Configura o canvas do menu:
     for (size_t i = 0; i < itens.size(); ++i) {
         cv::putText(ctx.roi_menu, itens[i], cv::Point(20, 40 + i * 35), 
-                    cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(255, 255, 255), 1, cv::LINE_AA);
+                    cv::FONT_HERSHEY_SIMPLEX, 0.7, cv::Scalar(0, 0, 0), 1, cv::LINE_AA);
     }
 
-    cv::namedWindow(ctx.window_name, cv::WINDOW_AUTOSIZE);
+    cv::namedWindow(window_name, cv::WINDOW_AUTOSIZE);
 }
 
 
@@ -533,7 +544,7 @@ int main(int argc, char *argv[]) {
 
         // Testa se a camera com o referido nº de séri foi encontrada:
         if (!pCamBase.IsValid()) {
-            std::cerr << "Câmera não encontrada!" << std::endl;
+            std::cerr << "Câmera não detectada!" << std::endl;
             return -1;
         }
 
@@ -575,7 +586,7 @@ int main(int argc, char *argv[]) {
     // Instanciação dos objetos que controlam o hardware das câmeras de eventos:
     EventCamera event_cam[numCams] = {
             EventCamera(parametros_gerais.serialNumber_event_cam3, "Left", true),
-            EventCamera(parametros_gerais.serialNumber_event_cam2, "Right")
+            EventCamera(parametros_gerais.serialNumber_event_cam2, "Right", false)
     };
 
 
@@ -584,7 +595,7 @@ int main(int argc, char *argv[]) {
     for (int i=0; i<numCams; i++){
         // COnfigura, carrega, os biases na camera de eventos definidos em setings.json:
         if (!event_cam[i].setBias(parametros_gerais)){
-            std::cerr << "Câmera de eventos[ " << i << "] não encontrada!" << std::endl;
+            std::cerr << "Câmera de eventos[ " << i << "] não detectada!" << std::endl;
             return -1;
         }
 
@@ -608,10 +619,19 @@ int main(int argc, char *argv[]) {
     // Dispara o funcionamenoe das câmeras de eventos.
     // A partir deste ponto, as câmeras de eventos começam a capturar e gerar frames, 
     // que são processados pelos geradores de frames e exibidos no dashboard em tempo real.
-    for (int i=0; i<numCams; i++){
+    // A contagem do laço for é invertida porque a câmera SLAVE deve ser iniciada antes da MASTER para 
+    // garantir que ela esteja pronta para receber os sinais de sincronismo e trigger da master.
+    /*for (int i=numCams-1; i>=0; i--){
+        //event_cam[i].configSincronismo();
+        event_cam[i].callStart();
+    }*/ 
+
+    for (int i=0;i<numCams;i++){
+        //event_cam[i].configSincronismo();
         event_cam[i].callStart();
     } 
 
+    
     // Instacia objeto ledLight para controlar o estado do Led ou lase de luz estruturada:
     LightController ledLight;
     bool running = true;
@@ -624,7 +644,7 @@ int main(int argc, char *argv[]) {
         if (paramVis.showViewer) {
             std::unique_lock<std::mutex> lock(paramVis.mutex);
 
-            // --- ATUALIZA CÂMERA ESQUERDA (Master / cd_frame_L) ---
+            // Atualiza o frame da câmera esquerda:
             if (!paramVis.frame_L.empty()) {
                 if (paramVis.frame_L.channels() == 1)
                     cv::cvtColor(paramVis.frame_L, paramVis.roi_L, cv::COLOR_GRAY2BGR);
@@ -632,12 +652,12 @@ int main(int argc, char *argv[]) {
                     paramVis.frame_L.copyTo(paramVis.roi_L);
 
                 // Inse3re texto no frame da câmera esquerda para identificar que é a câmera slave:
-                cv::putText(paramVis.roi_L, "Left (Master)", cv::Point(15, 30), 
+                cv::putText(paramVis.roi_L, "Left (Sync Master)", cv::Point(15, 30), 
                 cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);
 
             }
 
-            // --- ATUALIZA CÂMERA DIREITA (Slave / cd_frame_R) ---
+            //  Atualiza o frame da câmera direita:
             if (numCams == 2) {
                 if (!paramVis.frame_R.empty()) {
                     if (paramVis.frame_R.channels() == 1)
@@ -645,7 +665,7 @@ int main(int argc, char *argv[]) {
                     else
                         paramVis.frame_R.copyTo(paramVis.roi_R);
                     // Inse3re texto no frame da câmera direita para identificar que é a câmera slave:    
-                    cv::putText(paramVis.roi_R, "Right (Slave)", cv::Point(15, 30), 
+                    cv::putText(paramVis.roi_R, "Right (Sync Slave)", cv::Point(15, 30), 
                     cv::FONT_HERSHEY_SIMPLEX, 0.5, cv::Scalar(0, 255, 255), 1, cv::LINE_AA);                         
                 }
                
@@ -659,17 +679,12 @@ int main(int argc, char *argv[]) {
             }
         }
 
-        // Exibe o Dashboard ÚNICO contendo [Cam L][Cam R][Menu]
-        cv::imshow(paramVis.window_name, paramVis.dashboard);          
+        // Exibe o Dashboard:
+        if (numCams==2)
+            cv::imshow(paramVis.window_name_stereo, paramVis.dashboard);
+        else
+            cv::imshow(paramVis.window_name_single, paramVis.dashboard);          
 
-        /*
-        /// Exibe menu de escolha:
-        if (parametros_gerais.hab_exibe_menu){
-            //limparTela();
-            showMenu(pin_TriggerEventCam, pin_PiscaLed, parametros_gerais.duracao_pulso_trigger);
-            parametros_gerais.hab_exibe_menu= false;
-        }
-        */
 
         // Máquina de estados do menu principal:
         if (key!=-1){

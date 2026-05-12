@@ -83,7 +83,8 @@ struct parametrosFrameGenerator{
     cv::Mat dashboard;
     cv::Mat roi_L, roi_R, roi_menu;
     std::atomic<bool> showViewer{true};
-    std::string window_name = "Visualizacao em Tempo Real";
+    std::string window_name_single = "Visualizacao - Single Câmera";
+    std::string window_name_stereo = "Visualizacao - Sist. Estéreo";
     int largura_menu = 300;
     std::vector<std::unique_ptr<Metavision::CDFrameGenerator>> generators;
 };
