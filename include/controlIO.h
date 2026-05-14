@@ -1,3 +1,9 @@
+// Autor: Moacir Wendhausen
+// Projeto: VORIS
+// Data: 13/01/2026
+// Função: Este header contém as declarações das classes e funções relacionadas ao controle de hardware associado ao GPIO e PWM da Jetson Orin Nano
+
+
 #include <string>
 #include <gpiod.h>
 #include <atomic>

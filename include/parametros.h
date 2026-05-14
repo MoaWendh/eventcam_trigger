@@ -1,3 +1,11 @@
+// Autor: Moacir Wendhausen
+// Projeto: VORIS
+// Data: 21/01/2026
+// Função: Este header contém as declarações da struct "PARAMETROS_GERAIS", que é usada para armazenar os parâmetros gerais do sistema, 
+// como os tempos de trigger, números de série das câmeras, configurações de PWM, entre outros.
+// COntpem parâmetros associados tanto a ao IO da Jetson Orin Nano, IOs e PWMs, quanto a configuração da câmera de eventos, como os biases, 
+// que são usados para configurar a câmera de eventos via SDK Metavision.
+
 #ifndef CONFIG_PARAMETROS_H
 #define CONFIG_PARAMETROS_H
 

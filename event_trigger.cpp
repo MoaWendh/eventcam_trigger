@@ -1,3 +1,14 @@
+// Autor: Moacir Wendhausen    
+// Projeto: VORIS
+// Data: 10/01/2026
+// Programa principal que controla a captura de dados das câmeras de eventos e convencionais, bem como o controle do trigger por hardware e do LED de iluminação.
+// Apresenta um menu interativo no terminal para controle das opções baseado nas libs do OpenCV, e um dashboard visual, também OpenCV, para exibir os frames 
+// capturados e o menu de controle em tempo real.
+// São utilizados dosi canais de PWM da Jetson Orina Nano para controlar o blink do LED e a potência do LED.
+// O trigger por hardware é gerado usando os GPIOs da Jetson Orin Nano, controlados via a interface Sysfs do Linux.
+// Os principais parâmetros estão definidos no header "parametros.h", como os tempos de trigger, números de série das câmeras, configurações de PWM, entre outros.
+
+
 #include <gpiod.h>
 #include <iostream>
 #include <chrono>

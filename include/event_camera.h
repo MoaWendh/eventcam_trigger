@@ -1,3 +1,11 @@
+// Autor: Moacir Wendhausen
+// Projeto: VORIS
+// Data: 21/01/2026
+// Função: Este header contém a classe principal que controla a câmera de eventos, usando o SDK Metavision da Prophesee. 
+// A classe EventCamera herda todos os métodos e atributos da classe Metavision::Camera, e sobrescreve os métodos de inicialização, 
+// configuração de biases, configuração de trigger por hardware, entre outros, para adaptar às necessidades do projeto.
+
+
 #ifndef EVENT_CAMERA_H
 #define EVENT_CAMERA_H
 
