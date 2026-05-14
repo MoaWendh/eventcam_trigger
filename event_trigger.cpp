@@ -1,6 +1,9 @@
 // Autor: Moacir Wendhausen    
 // Projeto: VORIS
 // Data: 10/01/2026
+// Controle aquisição: sistema estéreo baseado em duas câmeras de eventos SylkEvCam da Cenury Arks.
+// Existe também a opção de trabalhar no modo single câmera, onde apenas a câmera master é utilizada, e a slave é desativada.
+// Este  controle stereo single é efetuado a través da variável "consta int numCams", onde numCams=2 ativa o modo estéreo e numCams=1 ativa o modo mono.
 // Programa principal que controla a captura de dados das câmeras de eventos e convencionais, bem como o controle do trigger por hardware e do LED de iluminação.
 // Apresenta um menu interativo no terminal para controle das opções baseado nas libs do OpenCV, e um dashboard visual, também OpenCV, para exibir os frames 
 // capturados e o menu de controle em tempo real.

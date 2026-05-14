@@ -31,3 +31,5 @@ SDK Metavision: 5.1.1
 ![alt text](image.png)
 
 3- Salva dados da camera de eventos através de **thread** sincronizada com **trigger de hardware** com duração variável em milisegundos.
+
+Obs.: Este software derivou o software eventcam_stereo no dia 15/05/2026.
